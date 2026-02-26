@@ -1,0 +1,14 @@
+node_modules/
+dist/
+target/
+src-tauri/target/
+.notehub/
+*.tmp
+.playwright-mcp/
+.idea
+
+# Lock files
+yarn.lock
+package-lock.json
+pnpm-lock.yaml
+bun.lockb
