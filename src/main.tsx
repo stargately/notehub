@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-globalThis.Buffer = Buffer;
+(globalThis as Record<string, unknown>).Buffer = Buffer;
 
 import React from "react";
 import ReactDOM from "react-dom/client";
