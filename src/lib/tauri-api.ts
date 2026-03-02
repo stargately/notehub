@@ -19,6 +19,61 @@ async function getInvoke() {
 // In-memory store for browser mode
 let browserFileContent: string | null = null;
 
+export function getDefaultProjectContent(): string {
+  const today = new Date().toISOString().split("T")[0];
+  return `---
+project: "Untitled Project"
+created: "${today}"
+views:
+  default:
+    group_by: status
+    sort_by: priority
+    sort_order: desc
+columns:
+  - field: id
+    width: 60
+  - field: title
+    width: 400
+  - field: status
+    width: 120
+  - field: priority
+    width: 100
+  - field: assignee
+    width: 120
+  - field: due
+    width: 120
+  - field: tags
+    width: 200
+status_options: [todo, in_progress, in_review, done, blocked]
+priority_options: [urgent, high, medium, low]
+assignee_options: []
+---
+
+## Tasks
+
+| Id | Title | Status | Priority | Assignee | Due | Tags |
+| --- | --- | --- | --- | --- | --- | --- |
+
+## Task Details
+
+## Notes
+`;
+}
+
+export async function saveFileDialog(): Promise<string | null> {
+  if (!isTauri) return null;
+  try {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const selected = await save({
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+      defaultPath: "untitled-todo.md",
+    });
+    return selected || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function openFileDialog(): Promise<string | null> {
   if (!isTauri) return null;
   try {

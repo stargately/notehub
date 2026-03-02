@@ -1,14 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ProjectData, Task } from "../lib/types";
 import { parseProjectMd, serializeProjectMd } from "../lib/markdown-parser";
-import { getProjectFilePaths, readFile, writeFile, openFileDialog } from "../lib/tauri-api";
+import { getProjectFilePaths, readFile, writeFile, getDefaultProjectContent } from "../lib/tauri-api";
 
 export async function resolveInitialFilePaths(): Promise<string[]> {
   try {
     const paths = await getProjectFilePaths();
-    if (paths.length > 0) return paths;
-    const selected = await openFileDialog();
-    return selected ? [selected] : [];
+    return paths;
   } catch {
     return [];
   }
@@ -23,12 +21,11 @@ export function useProjectFile(filePath: string | null) {
   // Get the project directory from file path
   const projectDir = filePath ? filePath.replace(/\/[^/]+$/, "") : null;
 
-  // Load and parse the file
+  // Load and parse the file (or default template for untitled)
   const loadFile = useCallback(async () => {
-    if (!filePath) return;
     try {
       setLoading(true);
-      const content = await readFile(filePath);
+      const content = filePath ? await readFile(filePath) : getDefaultProjectContent();
       const data = parseProjectMd(content);
       setProjectData(data);
       setError(null);
@@ -40,19 +37,14 @@ export function useProjectFile(filePath: string | null) {
   }, [filePath]);
 
   useEffect(() => {
-    if (filePath) {
-      loadFile();
-    } else {
-      setProjectData(null);
-      setLoading(false);
-    }
-  }, [loadFile, filePath]);
+    loadFile();
+  }, [loadFile]);
 
-  // Save project data back to file (debounced)
+  // Save project data back to file (debounced). For untitled (null filePath), just update state.
   const saveProject = useCallback(
     (data: ProjectData) => {
-      if (!filePath) return;
       setProjectData(data);
+      if (!filePath) return;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(async () => {
         try {
@@ -127,6 +119,21 @@ export function useProjectFile(filePath: string | null) {
     [projectData, saveProject]
   );
 
+  // Immediately flush any pending debounced save
+  const flushSave = useCallback(async () => {
+    if (!filePath || !projectData) return;
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    try {
+      const content = serializeProjectMd(projectData);
+      await writeFile(filePath, content);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [filePath, projectData]);
+
   return {
     filePath,
     projectDir,
@@ -140,5 +147,6 @@ export function useProjectFile(filePath: string | null) {
     deleteTask,
     updateNotes,
     saveProject,
+    flushSave,
   };
 }

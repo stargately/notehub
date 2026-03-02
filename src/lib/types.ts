@@ -46,7 +46,7 @@ export interface FileChangedPayload {
 
 export interface TabInfo {
   id: string;
-  filePath: string;
+  filePath: string | null;
   label: string;
 }
 

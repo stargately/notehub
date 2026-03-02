@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useProjectFile, resolveInitialFilePaths } from "./hooks/useProjectFile";
 import { useFileWatcher } from "./hooks/useFileWatcher";
-import { isTauri, openFileDialog } from "./lib/tauri-api";
+import { isTauri, openFileDialog, saveFileDialog, writeFile } from "./lib/tauri-api";
+import { serializeProjectMd } from "./lib/markdown-parser";
 import type { TabInfo, WeekFilter } from "./lib/types";
 import { TaskTable } from "./components/TaskTable";
 import { Toolbar } from "./components/Toolbar";
@@ -11,11 +12,16 @@ import { TabBar } from "./components/TabBar";
 
 let tabCounter = 0;
 
-function makeTab(filePath: string): TabInfo {
+function makeTab(filePath: string | null): TabInfo {
   tabCounter += 1;
-  const label = filePath.includes("/")
-    ? filePath.split("/").pop()!
-    : filePath.replace("browser://", "");
+  let label: string;
+  if (!filePath) {
+    label = "untitled-todo.md";
+  } else if (filePath.includes("/")) {
+    label = filePath.split("/").pop()!;
+  } else {
+    label = filePath.replace("browser://", "");
+  }
   return { id: String(tabCounter), filePath, label };
 }
 
@@ -24,14 +30,12 @@ function App() {
   const [activeTabId, setActiveTabId] = useState<string>("");
   const [initialized, setInitialized] = useState(false);
 
-  // Resolve initial files on mount
+  // Resolve initial files on mount — start with untitled if none found
   useEffect(() => {
     resolveInitialFilePaths().then((paths) => {
-      if (paths.length > 0) {
-        const newTabs = paths.map(makeTab);
-        setTabs(newTabs);
-        setActiveTabId(newTabs[0].id);
-      }
+      const newTabs = paths.length > 0 ? paths.map(makeTab) : [makeTab(null)];
+      setTabs(newTabs);
+      setActiveTabId(newTabs[0].id);
       setInitialized(true);
     });
   }, []);
@@ -51,6 +55,7 @@ function App() {
     updateTask,
     addTask,
     updateNotes,
+    flushSave,
   } = useProjectFile(activeFilePath);
 
   const [filterText, setFilterText] = useState("");
@@ -230,7 +235,29 @@ function App() {
     }
   }, [projectData?.meta.views.default?.group_by]);
 
+  // Cmd+S save handler
+  const handleSave = useCallback(async () => {
+    if (!projectData) return;
+    if (!activeFilePath) {
+      // Untitled file — prompt Save As
+      const newPath = await saveFileDialog();
+      if (!newPath) return;
+      const content = serializeProjectMd(projectData);
+      await writeFile(newPath, content);
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === activeTabId
+            ? { ...t, filePath: newPath, label: newPath.split("/").pop()! }
+            : t
+        )
+      );
+    } else {
+      flushSave();
+    }
+  }, [activeFilePath, activeTabId, projectData, flushSave]);
+
   // Cmd+R (Mac) / Ctrl+R (Win) to refresh current file
+  // Cmd+S (Mac) / Ctrl+S (Win) to save
   // Cmd+1..9 (Mac) / Ctrl+1..9 (Win) to switch tabs
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -238,6 +265,9 @@ function App() {
       if (e.key === "r") {
         e.preventDefault();
         loadFile();
+      } else if (e.key === "s") {
+        e.preventDefault();
+        handleSave();
       } else if (e.key >= "1" && e.key <= "9") {
         e.preventDefault();
         const idx = parseInt(e.key, 10) - 1;
@@ -248,7 +278,7 @@ function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [loadFile, tabs]);
+  }, [loadFile, handleSave, tabs]);
 
   // File watcher for external changes
   useFileWatcher(filePath, loadFile);
