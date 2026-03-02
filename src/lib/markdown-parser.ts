@@ -1,5 +1,6 @@
 import matter from "gray-matter";
 import type { ProjectData, ProjectMeta, Task, ColumnConfig } from "./types";
+import { resolveFieldType } from "./types";
 
 const DEFAULT_META: ProjectMeta = {
   project: "Untitled Project",
@@ -71,9 +72,14 @@ export function parseTaskDetails(detailsContent: string): Record<string, string>
   return descriptions;
 }
 
-export function parseMarkdownTable(tableString: string, _columns: ColumnConfig[]): Task[] {
+export function parseMarkdownTable(tableString: string, columns: ColumnConfig[]): Task[] {
   const lines = tableString.trim().split("\n").filter((l) => l.trim());
   if (lines.length < 2) return [];
+
+  // Build set of fields that should be parsed as tags (arrays)
+  const tagsFields = new Set(
+    columns.filter((c) => resolveFieldType(c) === "tags").map((c) => c.field)
+  );
 
   // Parse header row to get column names
   const headers = lines[0]
@@ -96,7 +102,7 @@ export function parseMarkdownTable(tableString: string, _columns: ColumnConfig[]
     const task: Record<string, unknown> = {};
     headers.forEach((header, idx) => {
       const value = cells[idx]?.trim() || "";
-      if (header === "tags") {
+      if (tagsFields.has(header)) {
         task[header] = value
           ? value.split(",").map((t: string) => t.trim())
           : [];

@@ -4,9 +4,26 @@ export interface ViewConfig {
   sort_order?: "asc" | "desc";
 }
 
+export type FieldType = "text" | "select" | "date" | "tags";
+
 export interface ColumnConfig {
   field: string;
   width?: number;
+  type?: FieldType;
+}
+
+const KNOWN_FIELD_TYPES: Record<string, FieldType> = {
+  status: "select",
+  priority: "select",
+  assignee: "select",
+  due: "date",
+  created: "date",
+  done: "date",
+  tags: "tags",
+};
+
+export function resolveFieldType(col: ColumnConfig): FieldType {
+  return col.type ?? KNOWN_FIELD_TYPES[col.field] ?? "text";
 }
 
 export interface ProjectMeta {

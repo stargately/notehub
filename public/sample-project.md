@@ -17,10 +17,24 @@ columns:
     width: 100
   - field: milestone
     width: 180
+    type: select
   - field: created
     width: 110
+    type: date
   - field: done
     width: 110
+    type: date
+milestone_options:
+  - beancount-v3
+  - beancount-v3.1
+  - beancount-v3.2
+  - beancount
+  - monetization
+  - plaid poc
+  - AI-Powered Accounting
+  - Open Ledger & Social Profiles
+  - Github integration
+  - simplify ui
 status_options:
   - todo
   - done

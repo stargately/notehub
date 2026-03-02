@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ProjectData, Task } from "../lib/types";
+import { resolveFieldType } from "../lib/types";
 import { parseProjectMd, serializeProjectMd } from "../lib/markdown-parser";
 import { getProjectFilePaths, readFile, writeFile, getDefaultProjectContent } from "../lib/tauri-api";
 
@@ -82,21 +83,47 @@ export function useProjectFile(filePath: string | null) {
   // Add a new task
   const addTask = useCallback(() => {
     if (!projectData) return;
+    const { meta } = projectData;
     const maxId = projectData.tasks.reduce((max, t) => {
       const num = parseInt(t.id, 10);
       return isNaN(num) ? max : Math.max(max, num);
     }, 0);
     const newId = String(maxId + 1).padStart(3, "0");
+
+    // Build defaults dynamically from column types
     const newTask: Task = {
       id: newId,
       title: "New Task",
-      status: projectData.meta.status_options[0] || "todo",
+      status: meta.status_options[0] || "todo",
       priority: "medium",
       assignee: "",
-      created: new Date().toISOString().slice(0, 10),
       due: "",
       tags: [],
     };
+    for (const col of meta.columns) {
+      if (col.field === "id" || col.field === "title" || col.field in newTask) continue;
+      const fieldType = resolveFieldType(col);
+      switch (fieldType) {
+        case "tags":
+          newTask[col.field] = [];
+          break;
+        case "select": {
+          const options = meta[`${col.field}_options`];
+          newTask[col.field] = Array.isArray(options) ? (options[0] as string) || "" : "";
+          break;
+        }
+        case "date":
+          newTask[col.field] = col.field === "created" ? new Date().toISOString().slice(0, 10) : "";
+          break;
+        default:
+          newTask[col.field] = "";
+      }
+    }
+    // Set created if it's a column but wasn't set above (it's in newTask already as a known field)
+    if (meta.columns.some((c) => c.field === "created") && !newTask.created) {
+      newTask.created = new Date().toISOString().slice(0, 10);
+    }
+
     saveProject({ ...projectData, tasks: [...projectData.tasks, newTask] });
   }, [projectData, saveProject]);
 

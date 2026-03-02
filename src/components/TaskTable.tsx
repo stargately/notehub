@@ -8,6 +8,7 @@ import type {
 } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import type { Task, ProjectMeta } from "../lib/types";
+import { resolveFieldType } from "../lib/types";
 import { StatusCellRenderer } from "./cell-renderers/StatusCellRenderer";
 import { PriorityCellRenderer } from "./cell-renderers/PriorityCellRenderer";
 import { AssigneeCellRenderer } from "./cell-renderers/AssigneeCellRenderer";
@@ -38,17 +39,25 @@ export function TaskTable({
   const gridRef = useRef<AgGridReact>(null);
 
   const effectiveColumnDefs = useMemo<ColDef[]>(() => {
-    const renderers: Record<string, unknown> = {
+    // Per-field renderer overrides (built-in fields with specialized renderers)
+    const fieldRenderers: Record<string, unknown> = {
       status: StatusCellRenderer,
       priority: PriorityCellRenderer,
       assignee: AssigneeCellRenderer,
-      created: DateCellRenderer,
-      due: DateCellRenderer,
-      done: DateCellRenderer,
+    };
+
+    // Type-based renderer fallbacks
+    const typeRenderers: Record<string, unknown> = {
+      select: StatusCellRenderer,
+      date: DateCellRenderer,
       tags: TagsCellRenderer,
     };
 
-    const editors: Record<string, { editor: string | unknown; params?: Record<string, unknown> }> = {
+    // Per-field editor overrides
+    const fieldEditors: Record<string, { editor: string | unknown; params?: Record<string, unknown> }> = {};
+
+    // Type-based editor fallbacks
+    const typeEditors: Record<string, { editor: string | unknown; params?: Record<string, unknown> }> = {
       tags: { editor: TagsEditor },
     };
 
@@ -56,7 +65,7 @@ export function TaskTable({
     for (const [key, value] of Object.entries(meta)) {
       if (key.endsWith("_options") && Array.isArray(value)) {
         const field = key.replace(/_options$/, "");
-        editors[field] = {
+        fieldEditors[field] = {
           editor: "agSelectCellEditor",
           params: { values: ["", ...value] },
         };
@@ -86,17 +95,24 @@ export function TaskTable({
         filter: true,
       };
 
+      const fieldType = resolveFieldType(col);
+
+      // Renderer resolution: title/id special → fieldRenderers → typeRenderers
       if (col.field === "title") {
         def.cellRenderer = TitleCellRenderer;
         def.rowDrag = true;
-      } else if (renderers[col.field]) {
-        def.cellRenderer = renderers[col.field];
+      } else if (fieldRenderers[col.field]) {
+        def.cellRenderer = fieldRenderers[col.field];
+      } else if (typeRenderers[fieldType]) {
+        def.cellRenderer = typeRenderers[fieldType];
       }
 
-      if (editors[col.field]) {
-        def.cellEditor = editors[col.field].editor;
-        if (editors[col.field].params) {
-          def.cellEditorParams = editors[col.field].params;
+      // Editor resolution: fieldEditors → typeEditors
+      const editor = fieldEditors[col.field] ?? typeEditors[fieldType];
+      if (editor) {
+        def.cellEditor = editor.editor;
+        if (editor.params) {
+          def.cellEditorParams = editor.params;
         }
       }
 
