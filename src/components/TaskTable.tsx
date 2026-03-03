@@ -109,6 +109,10 @@ export function TaskTable({
         def.cellRenderer = typeRenderers[fieldType];
       }
 
+      if (fieldType === "url") {
+        def.editable = false;
+      }
+
       // Editor resolution: fieldEditors → typeEditors
       const editor = fieldEditors[col.field] ?? typeEditors[fieldType];
       if (editor) {
