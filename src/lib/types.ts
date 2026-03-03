@@ -67,6 +67,8 @@ export interface TabInfo {
   label: string;
 }
 
+export type ViewMode = "grid" | "editor";
+
 export type WeekFilter = "this_week" | "last_week" | null;
 
 export interface TerminalOutputPayload {

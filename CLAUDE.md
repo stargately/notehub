@@ -17,6 +17,7 @@ notehub/
 │   │   ├── Toolbar.tsx         # Filters, toggles, new task
 │   │   ├── TabBar.tsx          # Multi-file tabs
 │   │   ├── TerminalPanel.tsx    # Integrated terminal (xterm.js)
+│   │   ├── MarkdownEditor.tsx  # Raw markdown textarea editor
 │   │   ├── cell-renderers/     # AG Grid display components
 │   │   └── cell-editors/       # AG Grid edit components
 │   ├── hooks/
@@ -131,6 +132,7 @@ assignee_options: [Name1, Name2]
 - `Cmd+F` — Focus filter
 - `Cmd+N` — New task
 - `Cmd+S` — Save (Save As for untitled)
+- `Cmd+/` — Toggle raw markdown editor
 - `Cmd+1-9` — Switch tabs
 - `Ctrl+`` `` — Toggle terminal
 - `Escape` — Close detail drawer

@@ -146,6 +146,22 @@ export function useProjectFile(filePath: string | null) {
     [projectData, saveProject]
   );
 
+  // Replace project data from raw markdown string
+  const replaceFromRaw = useCallback(
+    (rawMarkdown: string): boolean => {
+      try {
+        const data = parseProjectMd(rawMarkdown);
+        saveProject(data);
+        setError(null);
+        return true;
+      } catch (e) {
+        setError(`Parse error: ${String(e)}`);
+        return false;
+      }
+    },
+    [saveProject]
+  );
+
   // Immediately flush any pending debounced save
   const flushSave = useCallback(async () => {
     if (!filePath || !projectData) return;
@@ -174,6 +190,7 @@ export function useProjectFile(filePath: string | null) {
     deleteTask,
     updateNotes,
     saveProject,
+    replaceFromRaw,
     flushSave,
   };
 }

@@ -16,6 +16,7 @@ interface ToolbarProps {
   onToggleNotes: () => void;
   onToggleDarkMode: () => void;
   onWeekFilterChange: (filter: WeekFilter) => void;
+  onToggleEditor?: () => void;
 }
 
 export function Toolbar({
@@ -31,6 +32,7 @@ export function Toolbar({
   onToggleNotes,
   onToggleDarkMode,
   onWeekFilterChange,
+  onToggleEditor,
 }: ToolbarProps) {
   const [filterFocused, setFilterFocused] = useState(false);
 
@@ -128,6 +130,17 @@ export function Toolbar({
       >
         Notes
       </button>
+
+      {/* Source / Markdown Editor Toggle */}
+      {onToggleEditor && (
+        <button
+          onClick={onToggleEditor}
+          className="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+          title="Toggle raw markdown editor (Cmd+/)"
+        >
+          Source
+        </button>
+      )}
 
       {/* Dark Mode Toggle */}
       <button

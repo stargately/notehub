@@ -3,13 +3,14 @@ import { useProjectFile, resolveInitialFilePaths } from "./hooks/useProjectFile"
 import { useFileWatcher } from "./hooks/useFileWatcher";
 import { isTauri, openFileDialog, saveFileDialog, writeFile } from "./lib/tauri-api";
 import { serializeProjectMd } from "./lib/markdown-parser";
-import type { TabInfo, WeekFilter } from "./lib/types";
+import type { TabInfo, ViewMode, WeekFilter } from "./lib/types";
 import { TaskTable } from "./components/TaskTable";
 import { Toolbar } from "./components/Toolbar";
 import { ProjectNotes } from "./components/ProjectNotes";
 import { TaskDetailDrawer } from "./components/TaskDetailDrawer";
 import { TabBar } from "./components/TabBar";
 import { TerminalPanel } from "./components/TerminalPanel";
+import { MarkdownEditor } from "./components/MarkdownEditor";
 
 let tabCounter = 0;
 
@@ -62,8 +63,23 @@ function App() {
     updateTask,
     addTask,
     updateNotes,
+    replaceFromRaw,
     flushSave,
   } = useProjectFile(activeFilePath);
+
+  const [viewModeMap, setViewModeMap] = useState<Record<string, ViewMode>>({});
+  const [editorContentMap, setEditorContentMap] = useState<Record<string, string>>({});
+
+  const viewMode = viewModeMap[activeTabId] ?? "grid";
+  const editorContent = editorContentMap[activeTabId] ?? "";
+
+  const setViewMode = useCallback((mode: ViewMode) => {
+    setViewModeMap((prev) => ({ ...prev, [activeTabId]: mode }));
+  }, [activeTabId]);
+
+  const setEditorContent = useCallback((content: string) => {
+    setEditorContentMap((prev) => ({ ...prev, [activeTabId]: content }));
+  }, [activeTabId]);
 
   const [filterText, setFilterText] = useState("");
   const [groupBy, setGroupBy] = useState<string | null>(null);
@@ -80,7 +96,7 @@ function App() {
     return false;
   });
 
-  // Reset filter/notes when switching tabs
+  // Reset filter/notes when switching tabs (viewMode is per-tab via map)
   useEffect(() => {
     setFilterText("");
     setShowNotes(false);
@@ -114,6 +130,8 @@ function App() {
         }
         return next;
       });
+      setViewModeMap((prev) => { const next = { ...prev }; delete next[id]; return next; });
+      setEditorContentMap((prev) => { const next = { ...prev }; delete next[id]; return next; });
     },
     [activeTabId]
   );
@@ -244,8 +262,68 @@ function App() {
     }
   }, [projectData?.meta.views.default?.group_by]);
 
+  // Toggle between grid and raw markdown editor
+  const handleToggleViewMode = useCallback(() => {
+    if (viewMode === "grid") {
+      // Grid → Editor: serialize current data
+      if (projectData) {
+        setEditorContent(serializeProjectMd(projectData));
+      }
+      setSelectedTaskId(null);
+      setShowNotes(false);
+      setViewMode("editor");
+    } else {
+      // Editor → Grid: parse raw markdown back
+      const ok = replaceFromRaw(editorContent);
+      if (ok) {
+        setViewMode("grid");
+      }
+      // If parse fails, stay in editor — error shown via existing error UI
+    }
+  }, [viewMode, projectData, editorContent, replaceFromRaw]);
+
+  // Handle editor content changes — write raw text directly to file
+  const editorSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleEditorChange = useCallback(
+    (content: string) => {
+      setEditorContent(content);
+      if (!activeFilePath) return;
+      if (editorSaveTimeoutRef.current) clearTimeout(editorSaveTimeoutRef.current);
+      editorSaveTimeoutRef.current = setTimeout(async () => {
+        try {
+          await writeFile(activeFilePath, content);
+        } catch {
+          // Ignore — next explicit save will catch errors
+        }
+      }, 300);
+    },
+    [activeFilePath]
+  );
+
   // Cmd+S save handler
   const handleSave = useCallback(async () => {
+    if (viewMode === "editor") {
+      if (!activeFilePath) {
+        const newPath = await saveFileDialog();
+        if (!newPath) return;
+        await writeFile(newPath, editorContent);
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.id === activeTabId
+              ? { ...t, filePath: newPath, label: newPath.split("/").pop()! }
+              : t
+          )
+        );
+      } else {
+        // Flush any pending editor debounce, write immediately
+        if (editorSaveTimeoutRef.current) {
+          clearTimeout(editorSaveTimeoutRef.current);
+          editorSaveTimeoutRef.current = null;
+        }
+        await writeFile(activeFilePath, editorContent);
+      }
+      return;
+    }
     if (!projectData) return;
     if (!activeFilePath) {
       // Untitled file — prompt Save As
@@ -263,13 +341,19 @@ function App() {
     } else {
       flushSave();
     }
-  }, [activeFilePath, activeTabId, projectData, flushSave]);
+  }, [viewMode, activeFilePath, activeTabId, projectData, editorContent, flushSave]);
 
   // Cmd+R (Mac) / Ctrl+R (Win) to refresh current file
   // Cmd+S (Mac) / Ctrl+S (Win) to save
   // Cmd+1..9 (Mac) / Ctrl+1..9 (Win) to switch tabs
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Cmd+/ (or Ctrl+/) to toggle raw markdown editor
+      if ((e.metaKey || e.ctrlKey) && e.key === "/") {
+        e.preventDefault();
+        handleToggleViewMode();
+        return;
+      }
       // Ctrl+` (or Cmd+`) to toggle terminal
       if ((e.ctrlKey || e.metaKey) && e.key === "`") {
         e.preventDefault();
@@ -299,7 +383,7 @@ function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [loadFile, handleSave, tabs]);
+  }, [loadFile, handleSave, handleToggleViewMode, tabs]);
 
   // File watcher for external changes
   useFileWatcher(filePath, loadFile);
@@ -355,66 +439,109 @@ function App() {
         />
       )}
 
-      <Toolbar
-        meta={projectData?.meta ?? { project: "", created: "", views: {}, columns: [], status_options: [], priority_options: [], assignee_options: [] }}
-        filterText={filterText}
-        groupBy={groupBy}
-        hideDone={hideDone}
-        showNotes={showNotes}
-        darkMode={darkMode}
-        weekFilter={weekFilter}
-        onFilterChange={setFilterText}
-        onGroupByChange={setGroupBy}
-        onToggleHideDone={() => setHideDone(!hideDone)}
-        onAddTask={addTask}
-        onToggleNotes={() => setShowNotes(!showNotes)}
-        onToggleDarkMode={() => setDarkMode(!darkMode)}
-        onWeekFilterChange={setWeekFilter}
-      />
+      {viewMode === "editor" ? (
+        <>
+          {/* Editor header bar */}
+          <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+              {projectData?.meta.project || "Untitled"}
+            </h1>
+            <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 font-medium">
+              Markdown
+            </span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {navigator.platform.includes("Mac") ? "Cmd" : "Ctrl"}+/ to switch
+            </span>
+            <div className="flex-1" />
+            <button
+              onClick={handleToggleViewMode}
+              className="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              Grid View
+            </button>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+              title="Toggle dark mode"
+            >
+              {darkMode ? "\u2600\uFE0F" : "\u{1F319}"}
+            </button>
+          </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <span className="text-gray-500 dark:text-gray-400">Loading...</span>
-          </div>
-        ) : error ? (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-red-500">Error: {error}</p>
-          </div>
-        ) : projectData ? (
-          <>
-            <div className="flex-1 flex overflow-hidden">
-              <div className="flex-1 overflow-hidden">
-                <TaskTable
-                  tasks={filteredTasks}
-                  meta={projectData.meta}
-                  filterText={filterText}
-                  onTasksChanged={handleTasksChanged}
-                  onTaskSelected={(task) => setSelectedTaskId(task.id)}
-                />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {error && (
+              <div className="px-4 py-2 bg-red-50 dark:bg-red-900/30 border-b border-red-200 dark:border-red-800">
+                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
               </div>
-
-              {selectedTask && (
-                <div ref={drawerRef}>
-                  <TaskDetailDrawer
-                    task={selectedTask}
-                    onDescriptionChange={handleDescriptionChange}
-                    onDelete={handleDeleteTask}
-                    onClose={() => setSelectedTaskId(null)}
-                  />
-                </div>
-              )}
-            </div>
-
-            {showNotes && (
-              <ProjectNotes
-                notes={projectData.notes}
-                onUpdateNotes={updateNotes}
-              />
             )}
-          </>
-        ) : null}
-      </div>
+            <MarkdownEditor content={editorContent} onChange={handleEditorChange} />
+          </div>
+        </>
+      ) : (
+        <>
+          <Toolbar
+            meta={projectData?.meta ?? { project: "", created: "", views: {}, columns: [], status_options: [], priority_options: [], assignee_options: [] }}
+            filterText={filterText}
+            groupBy={groupBy}
+            hideDone={hideDone}
+            showNotes={showNotes}
+            darkMode={darkMode}
+            weekFilter={weekFilter}
+            onFilterChange={setFilterText}
+            onGroupByChange={setGroupBy}
+            onToggleHideDone={() => setHideDone(!hideDone)}
+            onAddTask={addTask}
+            onToggleNotes={() => setShowNotes(!showNotes)}
+            onToggleDarkMode={() => setDarkMode(!darkMode)}
+            onWeekFilterChange={setWeekFilter}
+            onToggleEditor={handleToggleViewMode}
+          />
+
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {loading ? (
+              <div className="flex-1 flex items-center justify-center">
+                <span className="text-gray-500 dark:text-gray-400">Loading...</span>
+              </div>
+            ) : error ? (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-red-500">Error: {error}</p>
+              </div>
+            ) : projectData ? (
+              <>
+                <div className="flex-1 flex overflow-hidden">
+                  <div className="flex-1 overflow-hidden">
+                    <TaskTable
+                      tasks={filteredTasks}
+                      meta={projectData.meta}
+                      filterText={filterText}
+                      onTasksChanged={handleTasksChanged}
+                      onTaskSelected={(task) => setSelectedTaskId(task.id)}
+                    />
+                  </div>
+
+                  {selectedTask && (
+                    <div ref={drawerRef}>
+                      <TaskDetailDrawer
+                        task={selectedTask}
+                        onDescriptionChange={handleDescriptionChange}
+                        onDelete={handleDeleteTask}
+                        onClose={() => setSelectedTaskId(null)}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {showNotes && (
+                  <ProjectNotes
+                    notes={projectData.notes}
+                    onUpdateNotes={updateNotes}
+                  />
+                )}
+              </>
+            ) : null}
+          </div>
+        </>
+      )}
 
       {terminalMounted && (
         <TerminalPanel

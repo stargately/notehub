@@ -105,6 +105,7 @@ Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the 
 | `Cmd+F` | Focus filter |
 | `Cmd+R` | Reload file |
 | `Cmd+S` | Save (or Save As for untitled) |
+| `Cmd+/` | Toggle raw markdown editor |
 | `Cmd+1-9` | Switch tabs |
 | `Ctrl+`` `` | Toggle terminal |
 | `Escape` | Close detail drawer |
