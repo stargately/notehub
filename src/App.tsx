@@ -9,6 +9,7 @@ import { Toolbar } from "./components/Toolbar";
 import { ProjectNotes } from "./components/ProjectNotes";
 import { TaskDetailDrawer } from "./components/TaskDetailDrawer";
 import { TabBar } from "./components/TabBar";
+import { TerminalPanel } from "./components/TerminalPanel";
 
 let tabCounter = 0;
 
@@ -45,6 +46,12 @@ function App() {
     [tabs, activeTabId]
   );
 
+  const terminalCwd = useMemo(() => {
+    if (!activeFilePath || activeFilePath.startsWith("browser://")) return undefined;
+    const lastSlash = activeFilePath.lastIndexOf("/");
+    return lastSlash > 0 ? activeFilePath.substring(0, lastSlash) : undefined;
+  }, [activeFilePath]);
+
   const {
     filePath,
     projectData,
@@ -64,6 +71,8 @@ function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [hideDone, setHideDone] = useState(false);
   const [weekFilter, setWeekFilter] = useState<WeekFilter>(null);
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalMounted, setTerminalMounted] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== "undefined") {
       return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -261,6 +270,13 @@ function App() {
   // Cmd+1..9 (Mac) / Ctrl+1..9 (Win) to switch tabs
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Ctrl+` (or Cmd+`) to toggle terminal
+      if ((e.ctrlKey || e.metaKey) && e.key === "`") {
+        e.preventDefault();
+        setShowTerminal((prev) => !prev);
+        setTerminalMounted(true);
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "r") {
         e.preventDefault();
@@ -399,6 +415,14 @@ function App() {
           </>
         ) : null}
       </div>
+
+      {terminalMounted && (
+        <TerminalPanel
+          visible={showTerminal}
+          cwd={terminalCwd}
+          onClose={() => setShowTerminal(false)}
+        />
+      )}
     </div>
   );
 }

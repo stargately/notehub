@@ -4,7 +4,7 @@ export interface ViewConfig {
   sort_order?: "asc" | "desc";
 }
 
-export type FieldType = "text" | "select" | "date" | "tags";
+export type FieldType = "text" | "select" | "date" | "tags" | "url";
 
 export interface ColumnConfig {
   field: string;
@@ -68,3 +68,12 @@ export interface TabInfo {
 }
 
 export type WeekFilter = "this_week" | "last_week" | null;
+
+export interface TerminalOutputPayload {
+  session_id: number;
+  data: string;
+}
+
+export interface TerminalExitPayload {
+  session_id: number;
+}

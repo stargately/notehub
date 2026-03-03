@@ -10,12 +10,16 @@
     "build:tauri": "tauri build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "kill": "lsof -ti :1420 | xargs kill -9 2>/dev/null; echo 'Port 1420 cleared'"
+    "kill": "lsof -ti :1420 | xargs kill -9 2>/dev/null; echo 'Port 1420 cleared'",
+    "lint:rust": "cd src-tauri && cargo clippy -- -D warnings",
+    "fmt:rust": "cd src-tauri && cargo fmt",
+    "fmt:rust:check": "cd src-tauri && cargo fmt -- --check"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-fs": "^2.2.0",
+    "@tauri-apps/plugin-opener": "^2.2.0",
     "@tiptap/extension-placeholder": "^2.11.0",
     "@tiptap/extension-task-item": "^2.11.0",
     "@tiptap/extension-task-list": "^2.11.0",
@@ -25,6 +29,8 @@
     "ag-grid-react": "^33.0.0",
     "buffer": "^6.0.3",
     "gray-matter": "^4.0.3",
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

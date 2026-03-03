@@ -14,6 +14,7 @@ import { PriorityCellRenderer } from "./cell-renderers/PriorityCellRenderer";
 import { AssigneeCellRenderer } from "./cell-renderers/AssigneeCellRenderer";
 import { DateCellRenderer } from "./cell-renderers/DateCellRenderer";
 import { TagsCellRenderer } from "./cell-renderers/TagsCellRenderer";
+import { UrlCellRenderer } from "./cell-renderers/UrlCellRenderer";
 import { TitleCellRenderer } from "./cell-renderers/TitleCellRenderer";
 import { ActionCellRenderer } from "./cell-renderers/ActionCellRenderer";
 
@@ -51,6 +52,7 @@ export function TaskTable({
       select: StatusCellRenderer,
       date: DateCellRenderer,
       tags: TagsCellRenderer,
+      url: UrlCellRenderer,
     };
 
     // Per-field editor overrides

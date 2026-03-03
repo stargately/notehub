@@ -100,3 +100,21 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-gray-400 dark:bg-gray-500;
 }
+
+/* xterm scrollbar */
+.xterm-viewport::-webkit-scrollbar {
+  width: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: #777;
+}

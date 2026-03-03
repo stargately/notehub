@@ -1,4 +1,5 @@
 mod commands;
+pub mod terminal;
 mod watcher;
 
 use std::sync::Mutex;
@@ -28,15 +29,21 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             project_file_paths: Mutex::new(file_paths),
         })
+        .manage(terminal::TerminalState::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_project_file_paths,
             commands::read_file,
             commands::write_file,
             commands::start_watching,
             commands::stop_watching,
+            commands::spawn_terminal,
+            commands::write_terminal,
+            commands::resize_terminal,
+            commands::kill_terminal,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

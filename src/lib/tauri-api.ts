@@ -116,6 +116,19 @@ export function isWriteLocked(path: string): boolean {
   return writeLock.has(path);
 }
 
+export async function openUrl(url: string): Promise<void> {
+  if (isTauri) {
+    try {
+      const { openUrl: tauriOpenUrl } = await import("@tauri-apps/plugin-opener");
+      await tauriOpenUrl(url);
+    } catch {
+      window.open(url, "_blank");
+    }
+  } else {
+    window.open(url, "_blank");
+  }
+}
+
 export async function writeFile(path: string, content: string): Promise<void> {
   if (!isTauri) {
     browserFileContent = content;
@@ -128,5 +141,27 @@ export async function writeFile(path: string, content: string): Promise<void> {
   } finally {
     setTimeout(() => writeLock.delete(path), 1000);
   }
+}
+
+// Terminal API
+
+export async function spawnTerminal(cwd?: string): Promise<number> {
+  const invoke = await getInvoke();
+  return invoke<number>("spawn_terminal", { cwd: cwd ?? null });
+}
+
+export async function writeTerminal(sessionId: number, data: string): Promise<void> {
+  const invoke = await getInvoke();
+  await invoke<void>("write_terminal", { sessionId, data });
+}
+
+export async function resizeTerminal(sessionId: number, cols: number, rows: number): Promise<void> {
+  const invoke = await getInvoke();
+  await invoke<void>("resize_terminal", { sessionId, cols: cols, rows: rows });
+}
+
+export async function killTerminal(sessionId: number): Promise<void> {
+  const invoke = await getInvoke();
+  await invoke<void>("kill_terminal", { sessionId });
 }
 
