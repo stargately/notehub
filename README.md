@@ -72,6 +72,7 @@ Any field added to `columns` in frontmatter automatically appears as a column. B
 | `select` | Colored pill/badge | Dropdown | Requires `*_options` list in frontmatter |
 | `date` | Formatted date | Text input | e.g. `2025-12-01` |
 | `tags` | Colored tag pills | Comma-separated input | Stored as `tag1, tag2` in table |
+| `url` | Clickable link | Text input | Opens in default browser |
 
 ### The `*_options` Convention
 
@@ -91,6 +92,22 @@ Built-in fields have their types inferred automatically — you only need `type`
 - `status`, `priority`, `assignee` infer as `select`
 - `due`, `created`, `done` infer as `date`
 - `tags` infers as `tags`
+
+## Integrated Terminal
+
+Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the app. The terminal opens in the active file's directory and persists its session when hidden. Requires the desktop app (Tauri).
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+N` | New task |
+| `Cmd+F` | Focus filter |
+| `Cmd+R` | Reload file |
+| `Cmd+S` | Save (or Save As for untitled) |
+| `Cmd+1-9` | Switch tabs |
+| `Ctrl+`` `` | Toggle terminal |
+| `Escape` | Close detail drawer |
 
 ## Architecture
 

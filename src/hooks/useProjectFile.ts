@@ -94,7 +94,7 @@ export function useProjectFile(filePath: string | null) {
     const newTask: Task = {
       id: newId,
       title: "New Task",
-      status: meta.status_options[0] || "todo",
+      status: "",
       priority: "medium",
       assignee: "",
       due: "",

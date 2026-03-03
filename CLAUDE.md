@@ -16,6 +16,7 @@ notehub/
 │   │   ├── ProjectNotes.tsx    # Project notes (Tiptap)
 │   │   ├── Toolbar.tsx         # Filters, toggles, new task
 │   │   ├── TabBar.tsx          # Multi-file tabs
+│   │   ├── TerminalPanel.tsx    # Integrated terminal (xterm.js)
 │   │   ├── cell-renderers/     # AG Grid display components
 │   │   └── cell-editors/       # AG Grid edit components
 │   ├── hooks/
@@ -30,7 +31,8 @@ notehub/
 │   └── src/
 │       ├── main.rs             # Entry point
 │       ├── lib.rs              # App init
-│       ├── commands.rs         # IPC commands (read/write file)
+│       ├── commands.rs         # IPC commands (read/write file, terminal)
+│       ├── terminal.rs         # PTY management (portable-pty)
 │       └── watcher.rs          # File system watcher (notify crate)
 ├── docs/plan.md                # Technical spec
 └── public/sample-project.md    # Demo file for browser mode
@@ -46,6 +48,7 @@ notehub/
 | Rich Text | Tiptap 2.11 (StarterKit, Placeholder, TaskList) |
 | Styling | Tailwind CSS 3.4, `@tailwindcss/typography` |
 | Parsing | gray-matter (YAML frontmatter) |
+| Terminal | portable-pty 0.8 (Rust), @xterm/xterm 5 (frontend) |
 | File Watch | notify 7 (Rust), 500ms debounce |
 
 ## Commands
@@ -127,8 +130,14 @@ assignee_options: [Name1, Name2]
 - `Cmd+R` — Reload file
 - `Cmd+F` — Focus filter
 - `Cmd+N` — New task
+- `Cmd+S` — Save (Save As for untitled)
 - `Cmd+1-9` — Switch tabs
+- `Ctrl+`` `` — Toggle terminal
 - `Escape` — Close detail drawer
+
+## Development Guidelines
+
+- **Document new features**: When adding a new feature, update both `README.md` (user-facing docs) and `CLAUDE.md` (architecture docs) in the same change.
 
 ## Key Types
 

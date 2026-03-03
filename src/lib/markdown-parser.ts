@@ -114,7 +114,7 @@ export function parseMarkdownTable(tableString: string, columns: ColumnConfig[])
     tasks.push({
       id: (task.id as string) || "",
       title: (task.title as string) || "",
-      status: (task.status as string) || "todo",
+      status: (task.status as string) || "",
       priority: (task.priority as string) || "medium",
       assignee: (task.assignee as string) || "",
       due: (task.due as string) || "",
