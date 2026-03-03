@@ -7,12 +7,17 @@ export function UrlCellRenderer(params: ICellRendererParams) {
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     openUrl(value);
   };
 
   return (
     <span className="flex items-center gap-1 min-w-0">
-      <span className="text-blue-500 underline truncate text-sm">{value}</span>
+      <button
+        onClick={handleOpen}
+        className="text-blue-500 underline truncate text-sm cursor-pointer text-left bg-transparent border-none p-0 font-inherit"
+        title={value}
+      >{value}</button>
       <button
         onClick={handleOpen}
         className="flex-shrink-0 text-blue-400 hover:text-blue-600 cursor-pointer"
