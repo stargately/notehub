@@ -268,6 +268,11 @@ function App() {
       } else if (e.key === "s") {
         e.preventDefault();
         handleSave();
+      } else if (e.key === "c" && e.shiftKey) {
+        e.preventDefault();
+        if (activeFilePath) {
+          navigator.clipboard.writeText(activeFilePath);
+        }
       } else if (e.key >= "1" && e.key <= "9") {
         e.preventDefault();
         const idx = parseInt(e.key, 10) - 1;
