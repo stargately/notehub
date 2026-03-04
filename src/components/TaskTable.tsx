@@ -110,7 +110,7 @@ export function TaskTable({
       }
 
       if (fieldType === "url") {
-        def.editable = false;
+        def.singleClickEdit = false;
       }
 
       // Editor resolution: fieldEditors → typeEditors
