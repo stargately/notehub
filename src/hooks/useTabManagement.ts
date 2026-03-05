@@ -128,6 +128,36 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
     return () => unlisten?.();
   }, []);
 
+  // Handle files opened via OS file association (e.g. drag to Dock icon)
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+
+    (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlisten = await listen<string[]>("open-files", (event) => {
+        const mdPaths = event.payload.filter((p) => /\.mdx?$/i.test(p));
+        if (mdPaths.length === 0) return;
+
+        setTabs((prev) => {
+          const existing = new Set(prev.map((t) => t.filePath));
+          const newTabs = mdPaths
+            .filter((p) => !existing.has(p))
+            .map(makeTab);
+          if (newTabs.length === 0) {
+            const match = prev.find((t) => t.filePath === mdPaths[0]);
+            if (match) setActiveTabId(match.id);
+            return prev;
+          }
+          setActiveTabId(newTabs[newTabs.length - 1].id);
+          return [...prev, ...newTabs];
+        });
+      });
+    })();
+
+    return () => unlisten?.();
+  }, []);
+
   return {
     tabs, setTabs, activeTabId, setActiveTabId, initialized,
     activeFilePath, terminalCwd,

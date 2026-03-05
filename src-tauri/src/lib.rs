@@ -3,15 +3,24 @@ pub mod terminal;
 mod watcher;
 
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 pub struct AppState {
     pub project_file_paths: Mutex<Vec<String>>,
 }
 
+fn is_markdown_file(p: &str) -> bool {
+    let path = std::path::Path::new(p);
+    path.exists()
+        && path
+            .extension()
+            .map_or(false, |e| e == "md" || e == "mdx")
+}
+
 pub fn run() {
     let file_paths: Vec<String> = std::env::args()
         .skip(1)
+        .filter(|p| is_markdown_file(p) || std::path::Path::new(p).is_absolute())
         .map(|p| {
             let path = std::path::Path::new(&p);
             if path.is_absolute() {
@@ -24,9 +33,10 @@ pub fn run() {
                     .to_string()
             }
         })
+        .filter(|p| is_markdown_file(p))
         .collect();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -65,6 +75,23 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running NoteHub");
+        .build(tauri::generate_context!())
+        .expect("error building NoteHub");
+
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Opened { urls } = event {
+            let paths: Vec<String> = urls
+                .iter()
+                .filter_map(|url| url.to_file_path().ok())
+                .filter(|p| {
+                    p.extension()
+                        .map_or(false, |e| e == "md" || e == "mdx")
+                })
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            if !paths.is_empty() {
+                let _ = app_handle.emit("open-files", &paths);
+            }
+        }
+    });
 }
