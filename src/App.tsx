@@ -385,6 +385,40 @@ function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [loadFile, handleSave, handleToggleViewMode, tabs]);
 
+  // Drag-and-drop markdown files to open as tabs
+  useEffect(() => {
+    if (!isTauri) return;
+    let unlisten: (() => void) | undefined;
+
+    (async () => {
+      const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+      unlisten = await getCurrentWebview().onDragDropEvent((event) => {
+        if (event.payload.type !== "drop") return;
+        const mdPaths = (event.payload.paths ?? []).filter((p: string) =>
+          /\.mdx?$/i.test(p)
+        );
+        if (mdPaths.length === 0) return;
+
+        setTabs((prev) => {
+          const existing = new Set(prev.map((t) => t.filePath));
+          const newTabs = mdPaths
+            .filter((p: string) => !existing.has(p))
+            .map(makeTab);
+          if (newTabs.length === 0) {
+            // All dropped files already open — just activate the first match
+            const match = prev.find((t) => t.filePath === mdPaths[0]);
+            if (match) setActiveTabId(match.id);
+            return prev;
+          }
+          setActiveTabId(newTabs[newTabs.length - 1].id);
+          return [...prev, ...newTabs];
+        });
+      });
+    })();
+
+    return () => unlisten?.();
+  }, []);
+
   // File watcher for external changes
   useFileWatcher(filePath, loadFile);
 
