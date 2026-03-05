@@ -79,6 +79,9 @@ export function Toolbar({
           onFocus={() => setFilterFocused(true)}
           onBlur={() => setFilterFocused(false)}
           placeholder="Filter..."
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           className="bg-transparent outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400 w-40"
         />
       </div>
