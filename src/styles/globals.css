@@ -54,6 +54,17 @@ body {
   font-weight: 600;
 }
 
+/* Flash highlight for newly added rows */
+.ag-theme-alpine .ag-cell-data-changed {
+  background-color: #dbeafe !important;
+}
+.dark .ag-theme-alpine .ag-cell-data-changed {
+  background-color: #1e3a5f !important;
+}
+.ag-theme-alpine .ag-cell-data-changed-animation {
+  transition: background-color 1s ease-out;
+}
+
 /* Tiptap editor styles */
 .tiptap-editor {
   @apply prose prose-sm dark:prose-invert max-w-none;

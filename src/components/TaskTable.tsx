@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useRef } from "react";
+import { useMemo, useCallback, useRef, useEffect } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type {
   ColDef,
@@ -26,6 +26,7 @@ interface TaskTableProps {
   tasks: Task[];
   meta: ProjectMeta;
   filterText: string;
+  highlightTaskId?: string | null;
   onTasksChanged: (tasks: Task[]) => void;
   onTaskSelected?: (task: Task) => void;
 }
@@ -34,10 +35,32 @@ export function TaskTable({
   tasks,
   meta,
   filterText,
+  highlightTaskId,
   onTasksChanged,
   onTaskSelected,
 }: TaskTableProps) {
   const gridRef = useRef<AgGridReact>(null);
+
+  // Scroll to and flash-highlight a newly added task
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    const api = gridRef.current?.api;
+    if (!api) return;
+
+    // Wait a tick for AG Grid to process the new row data
+    const timer = setTimeout(() => {
+      const rowNode = api.getRowNode(highlightTaskId);
+      if (!rowNode) return;
+      api.ensureNodeVisible(rowNode, "middle");
+      api.flashCells({ rowNodes: [rowNode] });
+      // Auto-focus the title cell for immediate editing
+      if (rowNode.rowIndex != null) {
+        api.startEditingCell({ rowIndex: rowNode.rowIndex, colKey: "title" });
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [highlightTaskId]);
 
   const effectiveColumnDefs = useMemo<ColDef[]>(() => {
     // Per-field renderer overrides (built-in fields with specialized renderers)

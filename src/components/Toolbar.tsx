@@ -156,7 +156,12 @@ export function Toolbar({
 
       {/* Add Task */}
       <button
-        onClick={onAddTask}
+        onMouseDown={(e) => {
+          // Blur so the grid's stopEditingWhenCellsLoseFocus doesn't cancel the new edit
+          e.preventDefault();
+          (e.target as HTMLElement).blur();
+          onAddTask();
+        }}
         className="px-3 py-1 text-sm rounded bg-blue-500 text-white hover:bg-blue-600 font-medium"
       >
         + New Task

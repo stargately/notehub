@@ -80,9 +80,9 @@ export function useProjectFile(filePath: string | null) {
     [projectData, saveProject]
   );
 
-  // Add a new task
-  const addTask = useCallback(() => {
-    if (!projectData) return;
+  // Add a new task — returns the new task ID so callers can scroll/highlight
+  const addTask = useCallback((): string | null => {
+    if (!projectData) return null;
     const { meta } = projectData;
     const maxId = projectData.tasks.reduce((max, t) => {
       const num = parseInt(t.id, 10);
@@ -125,6 +125,7 @@ export function useProjectFile(filePath: string | null) {
     }
 
     saveProject({ ...projectData, tasks: [...projectData.tasks, newTask] });
+    return newId;
   }, [projectData, saveProject]);
 
   // Delete a task

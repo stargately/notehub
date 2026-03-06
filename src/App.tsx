@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useProjectFile } from "./hooks/useProjectFile";
 import { useFileWatcher } from "./hooks/useFileWatcher";
 import { useDarkMode } from "./hooks/useDarkMode";
@@ -27,6 +27,7 @@ function App() {
   const [weekFilter, setWeekFilter] = useState<WeekFilter>(null);
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalMounted, setTerminalMounted] = useState(false);
+  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
 
   const { darkMode, toggleDarkMode } = useDarkMode();
 
@@ -70,6 +71,11 @@ function App() {
     projectData, hideDone, weekFilter, selectedTaskId,
     updateTasks, updateTask, setSelectedTaskId, setGroupBy,
   });
+
+  const handleAddTask = useCallback(() => {
+    const newId = addTask();
+    if (newId) setHighlightTaskId(newId);
+  }, [addTask]);
 
   // Click-outside-to-close drawer
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -186,7 +192,7 @@ function App() {
             onFilterChange={setFilterText}
             onGroupByChange={setGroupBy}
             onToggleHideDone={() => setHideDone(!hideDone)}
-            onAddTask={addTask}
+            onAddTask={handleAddTask}
             onToggleNotes={() => setShowNotes(!showNotes)}
             onToggleDarkMode={toggleDarkMode}
             onWeekFilterChange={setWeekFilter}
@@ -210,6 +216,7 @@ function App() {
                       tasks={filteredTasks}
                       meta={projectData.meta}
                       filterText={filterText}
+                      highlightTaskId={highlightTaskId}
                       onTasksChanged={handleTasksChanged}
                       onTaskSelected={(task) => setSelectedTaskId(task.id)}
                     />
