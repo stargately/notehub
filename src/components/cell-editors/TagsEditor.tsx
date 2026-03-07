@@ -2,7 +2,6 @@ import {
   forwardRef,
   useImperativeHandle,
   useRef,
-  useState,
   useEffect,
 } from "react";
 import type { ICellEditorParams } from "ag-grid-community";
@@ -12,8 +11,8 @@ export const TagsEditor = forwardRef(function TagsEditor(
   ref
 ) {
   const tags = Array.isArray(props.value) ? props.value : [];
-  const [value, setValue] = useState(tags.join(", "));
   const inputRef = useRef<HTMLInputElement>(null);
+  const valueRef = useRef(tags.join(", "));
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -21,7 +20,7 @@ export const TagsEditor = forwardRef(function TagsEditor(
 
   useImperativeHandle(ref, () => ({
     getValue() {
-      return value
+      return valueRef.current
         .split(",")
         .map((t: string) => t.trim())
         .filter(Boolean);
@@ -32,8 +31,10 @@ export const TagsEditor = forwardRef(function TagsEditor(
     <input
       ref={inputRef}
       type="text"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
+      defaultValue={valueRef.current}
+      onChange={(e) => {
+        valueRef.current = e.target.value;
+      }}
       onBlur={() => props.stopEditing()}
       onKeyDown={(e) => {
         if (e.key === "Enter") props.stopEditing();

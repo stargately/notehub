@@ -9,6 +9,7 @@ import type {
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import type { Task, ProjectMeta } from "../lib/types";
 import { resolveFieldType } from "../lib/types";
+import { formatTags, parseTags } from "../lib/tags";
 import { StatusCellRenderer } from "./cell-renderers/StatusCellRenderer";
 import { PriorityCellRenderer } from "./cell-renderers/PriorityCellRenderer";
 import { AssigneeCellRenderer } from "./cell-renderers/AssigneeCellRenderer";
@@ -17,8 +18,6 @@ import { TagsCellRenderer } from "./cell-renderers/TagsCellRenderer";
 import { UrlCellRenderer } from "./cell-renderers/UrlCellRenderer";
 import { TitleCellRenderer } from "./cell-renderers/TitleCellRenderer";
 import { ActionCellRenderer } from "./cell-renderers/ActionCellRenderer";
-
-import { TagsEditor } from "./cell-editors/TagsEditor";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -83,7 +82,6 @@ export function TaskTable({
 
     // Type-based editor fallbacks
     const typeEditors: Record<string, { editor: string | unknown; params?: Record<string, unknown> }> = {
-      tags: { editor: TagsEditor },
     };
 
     // Auto-detect *_options fields → dropdown editors
@@ -130,6 +128,11 @@ export function TaskTable({
         def.cellRenderer = fieldRenderers[col.field];
       } else if (typeRenderers[fieldType]) {
         def.cellRenderer = typeRenderers[fieldType];
+      }
+
+      if (fieldType === "tags") {
+        def.valueFormatter = (params) => formatTags(params.value);
+        def.valueParser = (params) => parseTags(params.newValue);
       }
 
       if (fieldType === "url") {

@@ -7,7 +7,10 @@ import { useTabManagement } from "./hooks/useTabManagement";
 import { useViewMode } from "./hooks/useViewMode";
 import { useTaskFilters } from "./hooks/useTaskFilters";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useUndoHistory } from "./hooks/useUndoHistory";
 import { isTauri } from "./lib/tauri-api";
+import { serializeProjectMd } from "./lib/markdown-parser";
+import type { ProjectData } from "./lib/types";
 import type { WeekFilter } from "./lib/types";
 import { TaskTable } from "./components/TaskTable";
 import { Toolbar } from "./components/Toolbar";
@@ -30,6 +33,7 @@ function App() {
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
 
   const { darkMode, toggleDarkMode } = useDarkMode();
+  const undoHistory = useUndoHistory();
 
   // Ref to break circular dependency between useTabManagement and useViewMode
   const cleanupTabRef = useRef<(tabId: string) => void>(() => {});
@@ -48,11 +52,49 @@ function App() {
     },
   });
 
+  // Debounced onBeforeSave: coalesces rapid edits (e.g. Tiptap keystrokes) into one undo step
+  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSnapshotRef = useRef<string | null>(null);
+
+  const flushPendingSnapshot = useCallback(() => {
+    if (snapshotTimerRef.current) {
+      clearTimeout(snapshotTimerRef.current);
+      snapshotTimerRef.current = null;
+    }
+    if (pendingSnapshotRef.current && activeTabId) {
+      undoHistory.pushSnapshot(activeTabId, pendingSnapshotRef.current);
+      pendingSnapshotRef.current = null;
+    }
+  }, [activeTabId, undoHistory]);
+
+  const onBeforeSave = useCallback(
+    (currentData: ProjectData) => {
+      const snapshot = serializeProjectMd(currentData);
+      pendingSnapshotRef.current = snapshot;
+      if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
+      snapshotTimerRef.current = setTimeout(() => {
+        if (pendingSnapshotRef.current && activeTabId) {
+          undoHistory.pushSnapshot(activeTabId, pendingSnapshotRef.current);
+          pendingSnapshotRef.current = null;
+        }
+      }, 500);
+    },
+    [activeTabId, undoHistory]
+  );
+
+  // Init undo history when file data is loaded (called from inside loadFile,
+  // avoiding race conditions with stale projectData from a previous filePath).
+  const onDataLoaded = useCallback((data: ProjectData) => {
+    if (activeTabId) {
+      undoHistory.initTab(activeTabId, serializeProjectMd(data));
+    }
+  }, [activeTabId, undoHistory]);
+
   const {
     filePath, projectData, loading, error,
     loadFile, updateTasks, updateTask, addTask, updateNotes,
     replaceFromRaw, flushSave,
-  } = useProjectFile(activeFilePath);
+  } = useProjectFile(activeFilePath, onBeforeSave, onDataLoaded);
 
   const {
     viewMode, editorContent,
@@ -61,8 +103,12 @@ function App() {
     activeTabId, activeFilePath, projectData,
     replaceFromRaw, flushSave, setTabs,
     setSelectedTaskId, setShowNotes,
+    undoHistory,
   });
-  cleanupTabRef.current = cleanupTab;
+  cleanupTabRef.current = (tabId: string) => {
+    cleanupTab(tabId);
+    undoHistory.cleanupTab(tabId);
+  };
 
   const {
     filteredTasks, selectedTask,
@@ -81,10 +127,26 @@ function App() {
   const drawerRef = useRef<HTMLDivElement>(null);
   useClickOutside(drawerRef, !!selectedTaskId, () => setSelectedTaskId(null));
 
+  // Undo/redo callbacks for Monaco editor exhaustion
+  const handleUndoExhausted = useCallback(() => {
+    if (!activeTabId) return null;
+    flushPendingSnapshot();
+    undoHistory.suppressNextPush();
+    return undoHistory.undo(activeTabId);
+  }, [activeTabId, undoHistory, flushPendingSnapshot]);
+
+  const handleRedoExhausted = useCallback(() => {
+    if (!activeTabId) return null;
+    undoHistory.suppressNextPush();
+    return undoHistory.redo(activeTabId);
+  }, [activeTabId, undoHistory]);
+
   useKeyboardShortcuts({
     loadFile, handleSave, handleToggleViewMode,
     tabs, setActiveTabId, activeFilePath,
     setShowTerminal, setTerminalMounted,
+    undoHistory, activeTabId, viewMode, replaceFromRaw,
+    flushPendingSnapshot,
   });
 
   // File watcher for external changes
@@ -176,7 +238,13 @@ function App() {
                 <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
               </div>
             )}
-            <MarkdownEditor content={editorContent} onChange={handleEditorChange} />
+            <MarkdownEditor
+              content={editorContent}
+              onChange={handleEditorChange}
+              darkMode={darkMode}
+              onUndoExhausted={handleUndoExhausted}
+              onRedoExhausted={handleRedoExhausted}
+            />
           </div>
         </>
       ) : (

@@ -13,11 +13,17 @@ export async function resolveInitialFilePaths(): Promise<string[]> {
   }
 }
 
-export function useProjectFile(filePath: string | null) {
+export function useProjectFile(
+  filePath: string | null,
+  onBeforeSave?: (currentData: ProjectData) => void,
+  onDataLoaded?: (data: ProjectData) => void,
+) {
   const [projectData, setProjectData] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDataLoadedRef = useRef(onDataLoaded);
+  onDataLoadedRef.current = onDataLoaded;
 
   // Get the project directory from file path
   const projectDir = filePath ? filePath.replace(/\/[^/]+$/, "") : null;
@@ -29,6 +35,7 @@ export function useProjectFile(filePath: string | null) {
       const content = filePath ? await readFile(filePath) : getDefaultProjectContent();
       const data = parseProjectMd(content);
       setProjectData(data);
+      onDataLoadedRef.current?.(data);
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -42,8 +49,14 @@ export function useProjectFile(filePath: string | null) {
   }, [loadFile]);
 
   // Save project data back to file (debounced). For untitled (null filePath), just update state.
+  const onBeforeSaveRef = useRef(onBeforeSave);
+  onBeforeSaveRef.current = onBeforeSave;
+
   const saveProject = useCallback(
     (data: ProjectData) => {
+      if (onBeforeSaveRef.current) {
+        onBeforeSaveRef.current(data);
+      }
       setProjectData(data);
       if (!filePath) return;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);

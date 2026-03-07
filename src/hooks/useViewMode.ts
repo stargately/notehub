@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import type { ProjectData, TabInfo, ViewMode } from "../lib/types";
 import { serializeProjectMd } from "../lib/markdown-parser";
 import { saveFileDialog, writeFile } from "../lib/tauri-api";
+import type { UndoHistory } from "./useUndoHistory";
 
 interface UseViewModeOptions {
   activeTabId: string;
@@ -12,12 +13,13 @@ interface UseViewModeOptions {
   setTabs: React.Dispatch<React.SetStateAction<TabInfo[]>>;
   setSelectedTaskId: (id: string | null) => void;
   setShowNotes: (show: boolean) => void;
+  undoHistory?: UndoHistory;
 }
 
 export function useViewMode({
   activeTabId, activeFilePath, projectData,
   replaceFromRaw, flushSave, setTabs,
-  setSelectedTaskId, setShowNotes,
+  setSelectedTaskId, setShowNotes, undoHistory,
 }: UseViewModeOptions) {
   const [viewModeMap, setViewModeMap] = useState<Record<string, ViewMode>>({});
   const [editorContentMap, setEditorContentMap] = useState<Record<string, string>>({});
@@ -36,18 +38,22 @@ export function useViewMode({
   const handleToggleViewMode = useCallback(() => {
     if (viewMode === "grid") {
       if (projectData) {
-        setEditorContent(serializeProjectMd(projectData));
+        const serialized = serializeProjectMd(projectData);
+        undoHistory?.pushSnapshot(activeTabId, serialized);
+        setEditorContent(serialized);
       }
       setSelectedTaskId(null);
       setShowNotes(false);
       setViewMode("editor");
     } else {
+      undoHistory?.pushSnapshot(activeTabId, editorContent);
+      undoHistory?.suppressNextPush();
       const ok = replaceFromRaw(editorContent);
       if (ok) {
         setViewMode("grid");
       }
     }
-  }, [viewMode, projectData, editorContent, replaceFromRaw, setEditorContent, setViewMode, setSelectedTaskId, setShowNotes]);
+  }, [viewMode, projectData, editorContent, activeTabId, undoHistory, replaceFromRaw, setEditorContent, setViewMode, setSelectedTaskId, setShowNotes]);
 
   const editorSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleEditorChange = useCallback(

@@ -13,9 +13,12 @@
     "kill": "lsof -ti :1420 | xargs kill -9 2>/dev/null; echo 'Port 1420 cleared'",
     "lint:rust": "cd src-tauri && cargo clippy -- -D warnings",
     "fmt:rust": "cd src-tauri && cargo fmt",
-    "fmt:rust:check": "cd src-tauri && cargo fmt -- --check"
+    "fmt:rust:check": "cd src-tauri && cargo fmt -- --check",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-fs": "^2.2.0",
@@ -25,25 +28,30 @@
     "@tiptap/extension-task-list": "^2.11.0",
     "@tiptap/react": "^2.11.0",
     "@tiptap/starter-kit": "^2.11.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "ag-grid-community": "^33.0.0",
     "ag-grid-react": "^33.0.0",
     "buffer": "^6.0.3",
     "gray-matter": "^4.0.3",
-    "@xterm/xterm": "^5.5.0",
-    "@xterm/addon-fit": "^0.10.0",
+    "monaco-editor": "^0.55.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "@tauri-apps/cli": "^2.2.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "jsdom": "^28.1.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "vitest": "^4.0.18"
   }
 }

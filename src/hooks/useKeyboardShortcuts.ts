@@ -1,5 +1,6 @@
 import { useEffect } from "react";
-import type { TabInfo } from "../lib/types";
+import type { TabInfo, ViewMode } from "../lib/types";
+import type { UndoHistory } from "./useUndoHistory";
 
 interface UseKeyboardShortcutsOptions {
   loadFile: () => void;
@@ -10,17 +11,47 @@ interface UseKeyboardShortcutsOptions {
   activeFilePath: string | null;
   setShowTerminal: React.Dispatch<React.SetStateAction<boolean>>;
   setTerminalMounted: (mounted: boolean) => void;
+  undoHistory?: UndoHistory;
+  activeTabId?: string;
+  viewMode?: ViewMode;
+  replaceFromRaw?: (raw: string) => boolean;
+  flushPendingSnapshot?: () => void;
 }
 
 export function useKeyboardShortcuts({
   loadFile, handleSave, handleToggleViewMode,
   tabs, setActiveTabId, activeFilePath,
   setShowTerminal, setTerminalMounted,
+  undoHistory, activeTabId, viewMode, replaceFromRaw,
+  flushPendingSnapshot,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+
+      // Cmd+Z / Cmd+Shift+Z — undo/redo in grid mode
+      if (mod && e.key === "z" && viewMode === "grid" && undoHistory && activeTabId && replaceFromRaw) {
+        e.preventDefault();
+        // Flush any pending debounced snapshot so it's available for undo
+        flushPendingSnapshot?.();
+        if (e.shiftKey) {
+          const snapshot = undoHistory.redo(activeTabId);
+          if (snapshot) {
+            undoHistory.suppressNextPush();
+            replaceFromRaw(snapshot);
+          }
+        } else {
+          const snapshot = undoHistory.undo(activeTabId);
+          if (snapshot) {
+            undoHistory.suppressNextPush();
+            replaceFromRaw(snapshot);
+          }
+        }
+        return;
+      }
+
       // Cmd+/ (or Ctrl+/) to toggle raw markdown editor
-      if ((e.metaKey || e.ctrlKey) && e.key === "/") {
+      if (mod && e.key === "/") {
         e.preventDefault();
         handleToggleViewMode();
         return;
@@ -32,7 +63,7 @@ export function useKeyboardShortcuts({
         setTerminalMounted(true);
         return;
       }
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!mod) return;
       if (e.key === "r") {
         e.preventDefault();
         loadFile();
@@ -54,5 +85,5 @@ export function useKeyboardShortcuts({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [loadFile, handleSave, handleToggleViewMode, tabs, setActiveTabId, activeFilePath, setShowTerminal, setTerminalMounted]);
+  }, [loadFile, handleSave, handleToggleViewMode, tabs, setActiveTabId, activeFilePath, setShowTerminal, setTerminalMounted, undoHistory, activeTabId, viewMode, replaceFromRaw, flushPendingSnapshot]);
 }
