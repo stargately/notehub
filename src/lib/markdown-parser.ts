@@ -89,6 +89,7 @@ export function parseMarkdownTable(tableString: string, columns: ColumnConfig[])
     .map((h) => h.toLowerCase());
 
   // Skip separator row (line index 1)
+  const hasIdColumn = headers.includes("id");
   const tasks: Task[] = [];
 
   for (let i = 2; i < lines.length; i++) {
@@ -111,8 +112,13 @@ export function parseMarkdownTable(tableString: string, columns: ColumnConfig[])
       }
     });
 
+    // Auto-generate sequential ID when no id column exists
+    const autoId = !hasIdColumn
+      ? String(tasks.length + 1).padStart(3, "0")
+      : "";
+
     tasks.push({
-      id: (task.id as string) || "",
+      id: (task.id as string) || autoId,
       title: (task.title as string) || "",
       status: (task.status as string) || "",
       priority: (task.priority as string) || "medium",

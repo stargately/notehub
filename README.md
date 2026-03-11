@@ -42,6 +42,8 @@ milestone_options: [v1.0, v1.1, v2.0]
 
 ### 2. Tasks Table
 
+The `id` column is optional. If omitted, NoteHub auto-generates sequential IDs (`001`, `002`, ...) on first load and saves them back to the file.
+
 ```markdown
 ## Tasks
 

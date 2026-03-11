@@ -216,7 +216,7 @@ export function TaskTable({
         rowData={tasks}
         columnDefs={effectiveColumnDefs}
         defaultColDef={defaultColDef}
-        getRowId={(params) => params.data.id}
+        getRowId={(params) => params.data.id || `_row_${params.data.title}`}
         onGridReady={onGridReady}
         onCellValueChanged={onCellValueChanged}
         onRowDragEnd={onRowDragEnd}

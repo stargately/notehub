@@ -118,6 +118,7 @@ assignee_options: [Name1, Name2]
 
 ## Architecture Notes
 
+- **Auto-generated IDs**: When a markdown file has no `id` column, the parser auto-assigns sequential IDs (`"001"`, `"002"`, ...) so AG Grid always has unique row keys. These IDs get serialized back on save.
 - **Data flow**: Markdown file → gray-matter parse → AG Grid/Tiptap → serialize back → atomic file write
 - **Atomic writes**: Write to `.tmp` file, then rename (prevents corruption)
 - **Write lock**: 1-second lock after writing prevents re-triggering own file change events
