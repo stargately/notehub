@@ -306,6 +306,7 @@ function App() {
                   <ProjectNotes
                     notes={projectData.notes}
                     onUpdateNotes={updateNotes}
+                    darkMode={darkMode}
                   />
                 )}
               </>
