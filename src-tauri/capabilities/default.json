@@ -11,6 +11,8 @@
     "fs:default",
     "fs:allow-read",
     "fs:allow-write",
-    "opener:default"
+    "opener:default",
+    "updater:default",
+    "process:default"
   ]
 }

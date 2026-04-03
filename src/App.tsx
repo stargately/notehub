@@ -8,6 +8,7 @@ import { useViewMode } from "./hooks/useViewMode";
 import { useTaskFilters } from "./hooks/useTaskFilters";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useUndoHistory } from "./hooks/useUndoHistory";
+import { useAutoUpdate } from "./hooks/useAutoUpdate";
 import { isTauri } from "./lib/tauri-api";
 import { serializeProjectMd } from "./lib/markdown-parser";
 import type { ProjectData } from "./lib/types";
@@ -34,6 +35,7 @@ function App() {
 
   const { darkMode, toggleDarkMode } = useDarkMode();
   const undoHistory = useUndoHistory();
+  useAutoUpdate();
 
   // Ref to break circular dependency between useTabManagement and useViewMode
   const cleanupTabRef = useRef<(tabId: string) => void>(() => {});

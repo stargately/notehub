@@ -23,9 +23,18 @@
       }
     ]
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/stargately/notehub/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZDNjFERTM2QURGRkE2MjIKUldRaXB2K3ROdDVoL0cvZkdFT0g0TGR6QVY2dTRSZ2k5N1AyeWZuREZjR2tOQlJQVENCL3dsSHEK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": "v1Compatible",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,7 +44,10 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["md", "mdx"],
+        "ext": [
+          "md",
+          "mdx"
+        ],
         "mimeType": "text/markdown",
         "description": "Markdown Document"
       }

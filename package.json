@@ -7,7 +7,7 @@
     "dev": "vite",
     "dev:tauri": "tauri dev",
     "build": "tsc && vite build",
-    "build:tauri": "tauri build",
+    "build:tauri": "TAURI_SIGNING_PRIVATE_KEY_PASSWORD='' TAURI_SIGNING_PRIVATE_KEY=$(cat $HOME/.tauri/notehub.key) tauri build",
     "preview": "vite preview",
     "tauri": "tauri",
     "kill": "lsof -ti :1420 | xargs kill -9 2>/dev/null; echo 'Port 1420 cleared'",
@@ -15,7 +15,8 @@
     "fmt:rust": "cd src-tauri && cargo fmt",
     "fmt:rust:check": "cd src-tauri && cargo fmt -- --check",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "generate-signer-keys/": "npx tauri signer generate -w ~/.tauri/notehub.key --ci"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -23,6 +24,8 @@
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-fs": "^2.2.0",
     "@tauri-apps/plugin-opener": "^2.2.0",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.0",
     "@tiptap/extension-placeholder": "^2.11.0",
     "@tiptap/extension-task-item": "^2.11.0",
     "@tiptap/extension-task-list": "^2.11.0",
@@ -40,7 +43,7 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
-    "@tauri-apps/cli": "^2.2.0",
+    "@tauri-apps/cli": "^2.10.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/react": "^18.3.12",
