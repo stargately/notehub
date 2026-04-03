@@ -3,6 +3,7 @@ import type { ProjectData, Task } from "../lib/types";
 import { resolveFieldType } from "../lib/types";
 import { parseProjectMd, serializeProjectMd } from "../lib/markdown-parser";
 import { getProjectFilePaths, readFile, writeFile, getDefaultProjectContent } from "../lib/tauri-api";
+import { toast } from "sonner";
 
 export async function resolveInitialFilePaths(): Promise<string[]> {
   try {
@@ -65,7 +66,7 @@ export function useProjectFile(
           const content = serializeProjectMd(data);
           await writeFile(filePath, content);
         } catch (e) {
-          setError(String(e));
+          toast.error("Failed to save file", { id: "save-error" });
         }
       }, 300);
     },
@@ -169,7 +170,7 @@ export function useProjectFile(
         setError(null);
         return true;
       } catch (e) {
-        setError(`Parse error: ${String(e)}`);
+        toast.error(`Parse error: ${String(e)}`);
         return false;
       }
     },
@@ -187,7 +188,7 @@ export function useProjectFile(
       const content = serializeProjectMd(projectData);
       await writeFile(filePath, content);
     } catch (e) {
-      setError(String(e));
+      toast.error("Failed to save file", { id: "save-error" });
     }
   }, [filePath, projectData]);
 

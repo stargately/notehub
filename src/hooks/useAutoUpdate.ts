@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { isTauri } from "../lib/tauri-api";
+import { toast } from "sonner";
 
 export function useAutoUpdate() {
   useEffect(() => {
@@ -30,7 +31,7 @@ export function useAutoUpdate() {
         const { relaunch } = await import("@tauri-apps/plugin-process");
         await relaunch();
       } catch (e) {
-        console.error("Auto-update check failed:", e);
+        toast.error("Auto-update check failed");
       }
     }
 

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import type { ProjectData, TabInfo, ViewMode } from "../lib/types";
 import { serializeProjectMd } from "../lib/markdown-parser";
 import { saveFileDialog, writeFile } from "../lib/tauri-api";
+import { toast } from "sonner";
 import type { UndoHistory } from "./useUndoHistory";
 
 interface UseViewModeOptions {
@@ -65,7 +66,7 @@ export function useViewMode({
         try {
           await writeFile(activeFilePath, content);
         } catch {
-          // Ignore — next explicit save will catch errors
+          toast.error("Failed to save editor changes", { id: "editor-save-error" });
         }
       }, 300);
     },

@@ -20,6 +20,7 @@ import { TaskDetailDrawer } from "./components/TaskDetailDrawer";
 import { TabBar } from "./components/TabBar";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { MarkdownEditor } from "./components/MarkdownEditor";
+import { Toaster } from "sonner";
 
 function App() {
   // UI state
@@ -157,6 +158,7 @@ function App() {
   if (!initialized || (loading && tabs.length === 0)) {
     return (
       <div className="h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+        <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
         <span className="text-gray-500 dark:text-gray-400">Loading...</span>
       </div>
     );
@@ -165,6 +167,7 @@ function App() {
   if (error && tabs.length === 0) {
     return (
       <div className="h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+        <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
         <div className="text-center">
           <p className="text-red-500 mb-2">Error: {error}</p>
           <button
@@ -181,6 +184,7 @@ function App() {
   if (!projectData && tabs.length === 0) {
     return (
       <div className="h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+        <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
         <div className="text-center">
           <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
             Welcome to NoteHub
@@ -195,6 +199,7 @@ function App() {
 
   return (
     <div className="h-screen flex flex-col bg-white dark:bg-gray-900">
+      <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
       {isTauri && tabs.length > 0 && (
         <TabBar
           tabs={tabs}
@@ -235,11 +240,6 @@ function App() {
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden">
-            {error && (
-              <div className="px-4 py-2 bg-red-50 dark:bg-red-900/30 border-b border-red-200 dark:border-red-800">
-                <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-              </div>
-            )}
             <MarkdownEditor
               content={editorContent}
               onChange={handleEditorChange}
@@ -273,10 +273,6 @@ function App() {
             {loading ? (
               <div className="flex-1 flex items-center justify-center">
                 <span className="text-gray-500 dark:text-gray-400">Loading...</span>
-              </div>
-            ) : error ? (
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-red-500">Error: {error}</p>
               </div>
             ) : projectData ? (
               <>
