@@ -1,4 +1,5 @@
 mod commands;
+pub mod recovery;
 pub mod terminal;
 mod watcher;
 
@@ -7,6 +8,7 @@ use tauri::{Emitter, Manager};
 
 pub struct AppState {
     pub project_file_paths: Mutex<Vec<String>>,
+    pub session_dirs: Mutex<Vec<String>>,
 }
 
 fn is_markdown_file(p: &str) -> bool {
@@ -44,6 +46,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(AppState {
             project_file_paths: Mutex::new(file_paths),
+            session_dirs: Mutex::new(Vec::new()),
         })
         .manage(terminal::TerminalState::new())
         .invoke_handler(tauri::generate_handler![
@@ -56,6 +59,9 @@ pub fn run() {
             commands::write_terminal,
             commands::resize_terminal,
             commands::kill_terminal,
+            commands::check_recovery,
+            commands::restore_from_backup,
+            commands::dismiss_recovery,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -75,25 +81,49 @@ pub fn run() {
                     }
                 }
             }
+
+            // Create session locks for crash detection
+            let dirs_vec: Vec<String> = watched_dirs.into_iter().collect();
+            for dir in &dirs_vec {
+                if let Err(e) = recovery::create_session_lock(dir) {
+                    eprintln!("Session lock warning: {}", e);
+                }
+            }
+            // Store dirs for cleanup on shutdown
+            *state.session_dirs.lock().unwrap() = dirs_vec;
+
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error building NoteHub");
 
     app.run(|app_handle, event| {
-        if let tauri::RunEvent::Opened { urls } = event {
-            let paths: Vec<String> = urls
-                .iter()
-                .filter_map(|url| url.to_file_path().ok())
-                .filter(|p| {
-                    p.extension()
-                        .map_or(false, |e| e == "md" || e == "mdx")
-                })
-                .map(|p| p.to_string_lossy().to_string())
-                .collect();
-            if !paths.is_empty() {
-                let _ = app_handle.emit("open-files", &paths);
+        match event {
+            tauri::RunEvent::Opened { urls } => {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .filter(|p| {
+                        p.extension()
+                            .map_or(false, |e| e == "md" || e == "mdx")
+                    })
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                if !paths.is_empty() {
+                    let _ = app_handle.emit("open-files", &paths);
+                }
             }
+            tauri::RunEvent::ExitRequested { .. } => {
+                // Clean shutdown: remove all session locks
+                let state = app_handle.state::<AppState>();
+                let dirs = state.session_dirs.lock().ok();
+                if let Some(dirs) = dirs {
+                    for dir in dirs.iter() {
+                        let _ = recovery::remove_session_lock(dir);
+                    }
+                }
+            }
+            _ => {}
         }
     });
 }

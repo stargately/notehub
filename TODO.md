@@ -14,7 +14,7 @@ _Before we tell anyone about this, these need to work._
 
 - [x] **Auto-update mechanism** — Tauri updater plugin, check on launch, notify + one-click install
 - [x] **Error toast system** — surface parse errors, file write failures, and watcher issues as dismissible toasts (not console.log)
-- [ ] **Crash recovery** — detect unclean shutdown, offer to restore last-known-good state from `.notehub/backups/`
+- [x] **Crash recovery** — detect unclean shutdown, offer to restore last-known-good state from `.notehub/backups/`
 - [ ] **Onboarding flow** — first launch creates a sample project that teaches the markdown format, keyboard shortcuts, and terminal
 - [ ] **App icon & branding** — proper macOS icon, DMG background, menu bar identity
 - [ ] **Release pipeline** — GitHub Actions: build macOS (universal), sign + notarize, publish to GitHub Releases

@@ -1,3 +1,4 @@
+use crate::recovery::{self, RecoveryCandidate};
 use crate::terminal::TerminalState;
 use crate::AppState;
 use std::fs;
@@ -23,6 +24,13 @@ pub async fn read_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub async fn write_file(path: String, content: String) -> Result<(), String> {
     let target = Path::new(&path);
+
+    // Best-effort backup before overwriting
+    if target.exists() {
+        if let Err(e) = recovery::create_backup(&path) {
+            eprintln!("Backup warning: {}", e);
+        }
+    }
 
     // Ensure parent directory exists
     if let Some(parent) = target.parent() {
@@ -88,4 +96,58 @@ pub fn resize_terminal(
 #[tauri::command]
 pub fn kill_terminal(state: State<TerminalState>, session_id: u32) -> Result<(), String> {
     crate::terminal::kill(&state, session_id)
+}
+
+#[tauri::command]
+pub fn check_recovery(state: State<AppState>) -> Result<Vec<RecoveryCandidate>, String> {
+    let dirs = state.session_dirs.lock().map_err(|e| e.to_string())?;
+    let paths = state
+        .project_file_paths
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone();
+
+    let mut candidates = Vec::new();
+
+    for dir in dirs.iter() {
+        if !recovery::check_stale_lock(dir) {
+            continue;
+        }
+        // Find project files in this directory and list their backups
+        for file_path in &paths {
+            if let Some(parent) = Path::new(file_path)
+                .parent()
+                .map(|d| d.to_string_lossy().to_string())
+            {
+                if parent == *dir {
+                    let backups = recovery::list_backups(file_path).unwrap_or_default();
+                    if !backups.is_empty() {
+                        candidates.push(RecoveryCandidate {
+                            file_path: file_path.clone(),
+                            backups,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(candidates)
+}
+
+#[tauri::command]
+pub async fn restore_from_backup(file_path: String, backup_path: String) -> Result<(), String> {
+    recovery::restore_backup(&file_path, &backup_path)
+}
+
+#[tauri::command]
+pub fn dismiss_recovery(state: State<AppState>) -> Result<(), String> {
+    let dirs = state.session_dirs.lock().map_err(|e| e.to_string())?;
+    for dir in dirs.iter() {
+        // Stale locks are already replaced by our new lock in setup(),
+        // so just clear any leftover state
+        let _ = recovery::remove_session_lock(dir);
+        let _ = recovery::create_session_lock(dir);
+    }
+    Ok(())
 }
