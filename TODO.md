@@ -16,7 +16,7 @@ _Before we tell anyone about this, these need to work._
 - [x] **Error toast system** — surface parse errors, file write failures, and watcher issues as dismissible toasts (not console.log)
 - [x] **Crash recovery** — detect unclean shutdown, offer to restore last-known-good state from `.notehub/backups/`
 - [ ] **Onboarding flow** — first launch creates a sample project that teaches the markdown format, keyboard shortcuts, and terminal
-- [ ] **App icon & branding** — proper macOS icon, DMG background, menu bar identity
+- [x] **App icon & branding** — proper macOS icon, DMG background, menu bar identity
 - [ ] **Release pipeline** — GitHub Actions: build macOS (universal), sign + notarize, publish to GitHub Releases
 - [ ] **Homebrew cask** — `brew install --cask notehub`
 - [ ] **Landing page** — single page site: hero demo GIF, "download for macOS", feature bullets, GitHub link

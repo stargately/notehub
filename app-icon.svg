@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="fold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e40af"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square (macOS squircle) -->
+  <rect x="80" y="80" width="864" height="864" rx="192" ry="192" fill="url(#bg)"/>
+
+  <!-- Document page -->
+  <path d="M300 220 H640 L724 304 V804 H300 Z" fill="#ffffff" opacity="0.95"/>
+
+  <!-- Fold triangle -->
+  <path d="M640 220 L724 304 H640 Z" fill="url(#fold)" opacity="0.6"/>
+
+  <!-- Markdown text lines -->
+  <rect x="360" y="340" width="300" height="24" rx="12" fill="#3b82f6" opacity="0.35"/>
+  <rect x="360" y="420" width="260" height="24" rx="12" fill="#3b82f6" opacity="0.25"/>
+  <rect x="360" y="500" width="280" height="24" rx="12" fill="#3b82f6" opacity="0.20"/>
+
+  <!-- Checkbox checked -->
+  <rect x="346" y="600" width="56" height="56" rx="12" fill="none" stroke="#3b82f6" stroke-width="6" opacity="0.7"/>
+  <polyline points="358,628 370,644 396,612" fill="none" stroke="#3b82f6" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+
+  <!-- Task text line -->
+  <rect x="430" y="614" width="230" height="24" rx="12" fill="#3b82f6" opacity="0.30"/>
+
+  <!-- Checkbox unchecked -->
+  <rect x="346" y="690" width="56" height="56" rx="12" fill="none" stroke="#3b82f6" stroke-width="6" opacity="0.4"/>
+  <rect x="430" y="704" width="200" height="24" rx="12" fill="#3b82f6" opacity="0.18"/>
+</svg>
