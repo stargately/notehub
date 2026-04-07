@@ -8,9 +8,21 @@ interface ProjectNotesProps {
 
 export function ProjectNotes({ notes, onUpdateNotes, darkMode }: ProjectNotesProps) {
   return (
-    <div className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-      <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+    <div
+      className="border-t nh-fade-in"
+      style={{
+        borderColor: "var(--nh-border)",
+        background: "var(--nh-bg-elevated)",
+      }}
+    >
+      <div
+        className="px-4 py-2 border-b"
+        style={{ borderColor: "var(--nh-border)" }}
+      >
+        <h2
+          className="text-[10px] font-medium uppercase tracking-wider"
+          style={{ color: "var(--nh-text-tertiary)" }}
+        >
           Project Notes
         </h2>
       </div>
@@ -24,7 +36,8 @@ export function ProjectNotes({ notes, onUpdateNotes, darkMode }: ProjectNotesPro
           options={{
             wordWrap: "on",
             minimap: { enabled: false },
-            fontSize: 14,
+            fontSize: 13,
+            fontFamily: '"DM Sans", sans-serif',
             lineNumbers: "off",
             scrollBeyondLastLine: false,
             padding: { top: 8 },

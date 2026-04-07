@@ -161,23 +161,26 @@ function App() {
 
   if (!initialized || (loading && tabs.length === 0)) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+      <div className="h-screen flex items-center justify-center" style={{ background: "var(--nh-bg)" }}>
         <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
-        <span className="text-gray-500 dark:text-gray-400">Loading...</span>
+        <div className="flex items-center gap-2" style={{ color: "var(--nh-text-tertiary)" }}>
+          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className="text-sm">Loading...</span>
+        </div>
       </div>
     );
   }
 
   if (error && tabs.length === 0) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+      <div className="h-screen flex items-center justify-center" style={{ background: "var(--nh-bg)" }}>
         <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
         <div className="text-center">
-          <p className="text-red-500 mb-2">Error: {error}</p>
-          <button
-            onClick={loadFile}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
+          <p className="text-sm mb-3" style={{ color: "var(--nh-accent)" }}>Error: {error}</p>
+          <button onClick={loadFile} className="nh-btn-primary">
             Retry
           </button>
         </div>
@@ -187,14 +190,19 @@ function App() {
 
   if (!projectData && tabs.length === 0) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white dark:bg-gray-900">
+      <div className="h-screen flex items-center justify-center" style={{ background: "var(--nh-bg)" }}>
         <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+        <div className="text-center nh-fade-in">
+          <div className="w-10 h-10 rounded-xl mx-auto mb-4 flex items-center justify-center" style={{ background: "var(--nh-accent-subtle)" }}>
+            <svg className="w-5 h-5" style={{ color: "var(--nh-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h2 className="text-base font-semibold mb-1" style={{ color: "var(--nh-text)" }}>
             Welcome to NoteHub
           </h2>
-          <p className="text-gray-500 dark:text-gray-400">
-            No project file loaded. Open a .md file to get started.
+          <p className="text-sm" style={{ color: "var(--nh-text-secondary)" }}>
+            Open a .md file to get started.
           </p>
         </div>
       </div>
@@ -202,7 +210,7 @@ function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-white dark:bg-gray-900">
+    <div className="h-screen flex flex-col" style={{ background: "var(--nh-bg)" }}>
       <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
       {isTauri && tabs.length > 0 && (
         <TabBar
@@ -217,29 +225,39 @@ function App() {
       {viewMode === "editor" ? (
         <>
           {/* Editor header bar */}
-          <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-            <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+          <div
+            className="flex flex-wrap items-center gap-2 px-4 py-2 border-b"
+            style={{ borderColor: "var(--nh-border)", background: "var(--nh-bg-elevated)" }}
+          >
+            <h1 className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--nh-text)" }}>
               {projectData?.meta.project || "Untitled"}
             </h1>
-            <span className="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 font-medium">
+            <span
+              className="px-2 py-0.5 text-[10px] rounded-full font-medium uppercase tracking-wide"
+              style={{ background: "var(--nh-accent-subtle)", color: "var(--nh-accent)" }}
+            >
               Markdown
             </span>
-            <span className="text-xs text-gray-400 dark:text-gray-500">
+            <span className="text-[10px]" style={{ color: "var(--nh-text-tertiary)" }}>
               {navigator.platform.includes("Mac") ? "Cmd" : "Ctrl"}+/ to switch
             </span>
             <div className="flex-1" />
-            <button
-              onClick={handleToggleViewMode}
-              className="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-            >
+            <button onClick={handleToggleViewMode} className="nh-btn">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
               Grid View
             </button>
-            <button
-              onClick={toggleDarkMode}
-              className="px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-              title="Toggle dark mode"
-            >
-              {darkMode ? "\u2600\uFE0F" : "\u{1F319}"}
+            <button onClick={toggleDarkMode} className="nh-btn" style={{ padding: "6px 8px" }} title="Toggle dark mode">
+              {darkMode ? (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                </svg>
+              )}
             </button>
           </div>
 
@@ -276,7 +294,13 @@ function App() {
           <div className="flex-1 flex flex-col overflow-hidden">
             {loading ? (
               <div className="flex-1 flex items-center justify-center">
-                <span className="text-gray-500 dark:text-gray-400">Loading...</span>
+                <div className="flex items-center gap-2" style={{ color: "var(--nh-text-tertiary)" }}>
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span className="text-sm">Loading...</span>
+                </div>
               </div>
             ) : projectData ? (
               <>

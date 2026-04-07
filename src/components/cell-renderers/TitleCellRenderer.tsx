@@ -5,8 +5,8 @@ export function TitleCellRenderer(params: ICellRendererParams) {
 
   return (
     <span
-      className="font-medium text-sm text-gray-900 dark:text-gray-100 block truncate"
-      style={{ maxWidth: "100%" }}
+      className="font-medium text-[13px] block truncate"
+      style={{ maxWidth: "100%", color: "var(--nh-text)" }}
       title={value}
     >
       {value}

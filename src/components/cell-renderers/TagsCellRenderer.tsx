@@ -1,20 +1,20 @@
 import type { ICellRendererParams } from "ag-grid-community";
 
-const TAG_COLORS = [
-  "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-  "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
-  "bg-pink-100 text-pink-700 dark:bg-pink-900 dark:text-pink-300",
-  "bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300",
-  "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
+const TAG_PALETTES = [
+  { bg: "rgba(59,130,246,0.1)", text: "#2563eb" },
+  { bg: "rgba(34,197,94,0.1)", text: "#16a34a" },
+  { bg: "rgba(168,85,247,0.1)", text: "#9333ea" },
+  { bg: "rgba(236,72,153,0.1)", text: "#db2777" },
+  { bg: "rgba(99,102,241,0.1)", text: "#4f46e5" },
+  { bg: "rgba(20,184,166,0.1)", text: "#0d9488" },
 ];
 
-function getTagColor(tag: string): string {
+function getTagPalette(tag: string) {
   let hash = 0;
   for (let i = 0; i < tag.length; i++) {
     hash = tag.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+  return TAG_PALETTES[Math.abs(hash) % TAG_PALETTES.length];
 }
 
 export function TagsCellRenderer(params: ICellRendererParams) {
@@ -23,14 +23,18 @@ export function TagsCellRenderer(params: ICellRendererParams) {
 
   return (
     <span className="inline-flex items-center gap-1 flex-wrap">
-      {tags.map((tag) => (
-        <span
-          key={tag}
-          className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${getTagColor(tag)}`}
-        >
-          {tag}
-        </span>
-      ))}
+      {tags.map((tag) => {
+        const palette = getTagPalette(tag);
+        return (
+          <span
+            key={tag}
+            className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+            style={{ background: palette.bg, color: palette.text }}
+          >
+            {tag}
+          </span>
+        );
+      })}
     </span>
   );
 }

@@ -54,23 +54,44 @@ export function Toolbar({
   }, [onAddTask]);
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+    <div
+      className="flex flex-wrap items-center gap-2 px-4 py-2 border-b"
+      style={{
+        borderColor: "var(--nh-border)",
+        background: "var(--nh-bg-elevated)",
+      }}
+    >
       {/* Project Name */}
-      <h1 className="text-sm font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+      <h1
+        className="text-sm font-semibold whitespace-nowrap mr-1"
+        style={{ color: "var(--nh-text)" }}
+      >
         {meta.project}
       </h1>
 
-      <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
+      <div
+        className="w-px h-4 shrink-0 hidden sm:block"
+        style={{ background: "var(--nh-border)" }}
+      />
 
       {/* Filter */}
       <div
-        className={`flex items-center px-2 py-1 rounded border text-sm ${
-          filterFocused
-            ? "border-blue-400 dark:border-blue-500"
-            : "border-gray-300 dark:border-gray-600"
-        }`}
+        className="flex items-center px-2.5 py-1 rounded-md text-sm transition-all"
+        style={{
+          border: `1px solid ${filterFocused ? "var(--nh-accent)" : "var(--nh-border)"}`,
+          background: filterFocused ? "var(--nh-accent-subtle)" : "transparent",
+          boxShadow: filterFocused ? "0 0 0 2px rgba(222, 76, 79, 0.1)" : "none",
+        }}
       >
-        <span className="text-gray-400 mr-1 text-xs">&#128269;</span>
+        <svg
+          className="w-3.5 h-3.5 mr-1.5 shrink-0"
+          style={{ color: "var(--nh-text-tertiary)" }}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
         <input
           id="filter-input"
           type="text"
@@ -82,90 +103,101 @@ export function Toolbar({
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
-          className="bg-transparent outline-none text-gray-700 dark:text-gray-300 placeholder-gray-400 w-40"
+          className="bg-transparent outline-none placeholder-gray-400 text-sm min-w-0"
+          style={{
+            color: "var(--nh-text)",
+            width: "clamp(100px, 15vw, 200px)",
+          }}
         />
       </div>
 
-      {/* Hide Done Pill */}
-      <button
-        onClick={onToggleHideDone}
-        className={`px-3 py-1 text-sm rounded-full border ${
-          hideDone
-            ? "bg-green-50 border-green-300 text-green-700 dark:bg-green-900 dark:border-green-600 dark:text-green-300"
-            : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-        }`}
-      >
-        {hideDone ? "Done hidden" : "Hide done"}
-      </button>
-
-      {/* Week Filter Pills */}
-      <button
-        onClick={() => onWeekFilterChange(weekFilter === "this_week" ? null : "this_week")}
-        className={`px-3 py-1 text-sm rounded-full border ${
-          weekFilter === "this_week"
-            ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-900 dark:border-blue-600 dark:text-blue-300"
-            : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-        }`}
-      >
-        This Week
-      </button>
-      <button
-        onClick={() => onWeekFilterChange(weekFilter === "last_week" ? null : "last_week")}
-        className={`px-3 py-1 text-sm rounded-full border ${
-          weekFilter === "last_week"
-            ? "bg-purple-50 border-purple-300 text-purple-700 dark:bg-purple-900 dark:border-purple-600 dark:text-purple-300"
-            : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-        }`}
-      >
-        Last Week
-      </button>
-
-      <div className="flex-1" />
-
-      {/* Toggle Notes */}
-      <button
-        onClick={onToggleNotes}
-        className={`px-3 py-1 text-sm rounded border ${
-          showNotes
-            ? "bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-900 dark:border-blue-600 dark:text-blue-300"
-            : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-        }`}
-      >
-        Notes
-      </button>
-
-      {/* Source / Markdown Editor Toggle */}
-      {onToggleEditor && (
+      {/* Filter pills */}
+      <div className="flex items-center gap-1.5 flex-wrap">
         <button
-          onClick={onToggleEditor}
-          className="px-3 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-          title="Toggle raw markdown editor (Cmd+/)"
+          onClick={onToggleHideDone}
+          className={`nh-pill ${hideDone ? "active" : ""}`}
         >
-          Source
+          {hideDone ? (
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : null}
+          {hideDone ? "Done hidden" : "Hide done"}
         </button>
-      )}
 
-      {/* Dark Mode Toggle */}
-      <button
-        onClick={onToggleDarkMode}
-        className="px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-        title="Toggle dark mode"
-      >
-        {darkMode ? "\u2600\uFE0F" : "\u{1F319}"}
-      </button>
+        <button
+          onClick={() => onWeekFilterChange(weekFilter === "this_week" ? null : "this_week")}
+          className={`nh-pill ${weekFilter === "this_week" ? "active" : ""}`}
+        >
+          This Week
+        </button>
 
-      {/* Add Task */}
-      <button
-        onMouseDown={(e) => {
-          // Blur so the grid's stopEditingWhenCellsLoseFocus doesn't cancel the new edit
-          e.preventDefault();
-          (e.target as HTMLElement).blur();
-          onAddTask();
-        }}
-        className="px-3 py-1 text-sm rounded bg-blue-500 text-white hover:bg-blue-600 font-medium"
-      >
-        + New Task
-      </button>
+        <button
+          onClick={() => onWeekFilterChange(weekFilter === "last_week" ? null : "last_week")}
+          className={`nh-pill ${weekFilter === "last_week" ? "active" : ""}`}
+        >
+          Last Week
+        </button>
+      </div>
+
+      <div className="flex-1 min-w-[8px]" />
+
+      {/* Right-side actions */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          onClick={onToggleNotes}
+          className={`nh-btn ${showNotes ? "active" : ""}`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          Notes
+        </button>
+
+        {onToggleEditor && (
+          <button
+            onClick={onToggleEditor}
+            className="nh-btn"
+            title="Toggle raw markdown editor (Cmd+/)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            Source
+          </button>
+        )}
+
+        <button
+          onClick={onToggleDarkMode}
+          className="nh-btn"
+          style={{ padding: "6px 8px" }}
+          title="Toggle dark mode"
+        >
+          {darkMode ? (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+          )}
+        </button>
+
+        <button
+          onMouseDown={(e) => {
+            e.preventDefault();
+            (e.target as HTMLElement).blur();
+            onAddTask();
+          }}
+          className="nh-btn-primary"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          New Task
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,24 +1,29 @@
 import type { ICellRendererParams } from "ag-grid-community";
 
-const STATUS_COLORS: Record<string, string> = {
-  todo: "bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-200",
-  in_progress: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200",
-  in_review: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200",
-  done: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
-  blocked: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200",
+const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> = {
+  todo: { bg: "rgba(156,163,175,0.1)", text: "#6b7280", dot: "#9ca3af" },
+  in_progress: { bg: "rgba(59,130,246,0.1)", text: "#2563eb", dot: "#3b82f6" },
+  in_review: { bg: "rgba(245,158,11,0.1)", text: "#d97706", dot: "#f59e0b" },
+  done: { bg: "rgba(34,197,94,0.1)", text: "#16a34a", dot: "#22c55e" },
+  blocked: { bg: "rgba(239,68,68,0.1)", text: "#dc2626", dot: "#ef4444" },
 };
 
 export function StatusCellRenderer(params: ICellRendererParams) {
   const value = params.value as string;
   if (!value) return null;
 
-  const colorClass = STATUS_COLORS[value] || STATUS_COLORS.todo;
+  const style = STATUS_STYLES[value] || STATUS_STYLES.todo;
   const label = value.replace(/_/g, " ");
 
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colorClass}`}
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium"
+      style={{ background: style.bg, color: style.text }}
     >
+      <span
+        className="w-1.5 h-1.5 rounded-full shrink-0"
+        style={{ background: style.dot }}
+      />
       {label}
     </span>
   );

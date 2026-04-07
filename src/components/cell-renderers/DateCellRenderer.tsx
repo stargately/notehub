@@ -4,5 +4,12 @@ export function DateCellRenderer(params: ICellRendererParams) {
   const value = params.value as string;
   if (!value) return null;
 
-  return <span className="text-sm text-gray-400 dark:text-gray-500 font-mono">{value}</span>;
+  return (
+    <span
+      className="text-[11px] font-mono"
+      style={{ color: "var(--nh-text-secondary)" }}
+    >
+      {value}
+    </span>
+  );
 }

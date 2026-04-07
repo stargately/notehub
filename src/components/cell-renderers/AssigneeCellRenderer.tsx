@@ -1,12 +1,8 @@
 import type { ICellRendererParams } from "ag-grid-community";
 
 const AVATAR_COLORS = [
-  "bg-blue-500",
-  "bg-green-500",
-  "bg-purple-500",
-  "bg-pink-500",
-  "bg-indigo-500",
-  "bg-teal-500",
+  "#3b82f6", "#22c55e", "#a855f7",
+  "#ec4899", "#6366f1", "#14b8a6",
 ];
 
 function getInitials(name: string): string {
@@ -28,19 +24,26 @@ function getColor(name: string): string {
 
 export function AssigneeCellRenderer(params: ICellRendererParams) {
   const value = params.value as string;
-  if (!value) return <span className="text-gray-400 text-sm">Unassigned</span>;
+  if (!value) {
+    return (
+      <span className="text-[11px]" style={{ color: "var(--nh-text-tertiary)" }}>
+        —
+      </span>
+    );
+  }
 
   const initials = getInitials(value);
   const color = getColor(value);
 
   return (
-    <span className="inline-flex items-center gap-2">
+    <span className="inline-flex items-center gap-1.5">
       <span
-        className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-white text-xs font-medium ${color}`}
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full text-white text-[9px] font-semibold shrink-0"
+        style={{ background: color }}
       >
         {initials}
       </span>
-      <span className="text-sm text-gray-700 dark:text-gray-300">{value}</span>
+      <span className="text-[12px]" style={{ color: "var(--nh-text)" }}>{value}</span>
     </span>
   );
 }

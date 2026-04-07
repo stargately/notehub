@@ -9,10 +9,15 @@ export function ActionCellRenderer(params: ICellRendererParams) {
   return (
     <button
       onClick={handleClick}
-      className="w-full h-full flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+      className="w-full h-full flex items-center justify-center transition-colors"
+      style={{ color: "var(--nh-text-tertiary)" }}
+      onMouseEnter={(e) => { e.currentTarget.style.color = "var(--nh-accent)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = "var(--nh-text-tertiary)"; }}
       title="Open details"
     >
-      &hellip;
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+      </svg>
     </button>
   );
 }
