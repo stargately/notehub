@@ -9,7 +9,6 @@ import { useTaskFilters } from "./hooks/useTaskFilters";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useUndoHistory } from "./hooks/useUndoHistory";
 import { useAutoUpdate } from "./hooks/useAutoUpdate";
-import { useRecovery } from "./hooks/useRecovery";
 import { isTauri } from "./lib/tauri-api";
 import { serializeProjectMd } from "./lib/markdown-parser";
 import type { ProjectData } from "./lib/types";
@@ -38,8 +37,6 @@ function App() {
   const { darkMode, toggleDarkMode } = useDarkMode();
   const undoHistory = useUndoHistory();
   useAutoUpdate();
-  const loadFileRef = useRef<() => void>(() => {});
-  useRecovery({ loadFile: () => loadFileRef.current() });
 
   // Ref to break circular dependency between useTabManagement and useViewMode
   const cleanupTabRef = useRef<(tabId: string) => void>(() => {});
@@ -101,7 +98,6 @@ function App() {
     loadFile, updateTasks, updateTask, addTask, updateNotes,
     replaceFromRaw, flushSave,
   } = useProjectFile(activeFilePath, onBeforeSave, onDataLoaded);
-  loadFileRef.current = loadFile;
 
   const {
     viewMode, editorContent,

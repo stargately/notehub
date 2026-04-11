@@ -38,10 +38,7 @@ pub fn start_watcher(app: &tauri::AppHandle, dir: &str) -> Result<(), String> {
                 for path in &event.paths {
                     // Skip temp files and hidden files
                     let path_str = path.to_string_lossy().to_string();
-                    if path_str.ends_with(".tmp")
-                        || path_str.contains(".notehub")
-                        || path_str.contains(".git")
-                    {
+                    if path_str.ends_with(".tmp") || path_str.contains(".git") {
                         continue;
                     }
 

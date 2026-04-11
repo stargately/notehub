@@ -143,36 +143,6 @@ export async function writeFile(path: string, content: string): Promise<void> {
   }
 }
 
-// Recovery API
-
-export interface BackupInfo {
-  original_path: string;
-  backup_path: string;
-  timestamp: string;
-  size_bytes: number;
-}
-
-export interface RecoveryCandidate {
-  file_path: string;
-  backups: BackupInfo[];
-}
-
-export async function checkRecovery(): Promise<RecoveryCandidate[]> {
-  if (!isTauri) return [];
-  const invoke = await getInvoke();
-  return invoke<RecoveryCandidate[]>("check_recovery");
-}
-
-export async function restoreFromBackup(filePath: string, backupPath: string): Promise<void> {
-  const invoke = await getInvoke();
-  await invoke<void>("restore_from_backup", { filePath, backupPath });
-}
-
-export async function dismissRecovery(): Promise<void> {
-  const invoke = await getInvoke();
-  await invoke<void>("dismiss_recovery");
-}
-
 // Terminal API
 
 export async function spawnTerminal(cwd?: string): Promise<number> {

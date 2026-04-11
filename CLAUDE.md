@@ -122,7 +122,7 @@ assignee_options: [Name1, Name2]
 - **Data flow**: Markdown file → gray-matter parse → AG Grid/Tiptap → serialize back → atomic file write
 - **Atomic writes**: Write to `.tmp` file, then rename (prevents corruption)
 - **Write lock**: 1-second lock after writing prevents re-triggering own file change events
-- **File watcher**: Rust `notify` crate watches `.md` files, filters out `.tmp`/`.git`/`.notehub`, emits `"file-changed"` events to React via Tauri
+- **File watcher**: Rust `notify` crate watches `.md` files, filters out `.tmp`/`.git`, emits `"file-changed"` events to React via Tauri
 - **Save debounce**: 300ms debounce on React side
 - **Browser fallback**: Runs without Tauri using `sample-project.md` for UI testing
 - **Dark mode**: Class-based (`dark` class), AG Grid + Tailwind themed
