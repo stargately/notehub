@@ -18,6 +18,7 @@ import { Toolbar } from "./components/Toolbar";
 import { ProjectNotes } from "./components/ProjectNotes";
 import { TaskDetailDrawer } from "./components/TaskDetailDrawer";
 import { TabBar } from "./components/TabBar";
+import { ThemeIcon } from "./components/ThemeIcon";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { MarkdownEditor } from "./components/MarkdownEditor";
 import { Toaster } from "sonner";
@@ -34,7 +35,7 @@ function App() {
   const [terminalMounted, setTerminalMounted] = useState(false);
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
 
-  const { darkMode, toggleDarkMode } = useDarkMode();
+  const { darkMode, themeMode, cycleThemeMode } = useDarkMode();
   const undoHistory = useUndoHistory();
   useAutoUpdate();
 
@@ -244,16 +245,13 @@ function App() {
               </svg>
               Grid View
             </button>
-            <button onClick={toggleDarkMode} className="nh-btn" style={{ padding: "6px 8px" }} title="Toggle dark mode">
-              {darkMode ? (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                </svg>
-              )}
+            <button
+              onClick={cycleThemeMode}
+              className="nh-btn"
+              style={{ padding: "6px 8px" }}
+              title={`Theme: ${themeMode} (click to cycle)`}
+            >
+              <ThemeIcon themeMode={themeMode} />
             </button>
           </div>
 
@@ -275,14 +273,14 @@ function App() {
             groupBy={groupBy}
             hideDone={hideDone}
             showNotes={showNotes}
-            darkMode={darkMode}
             weekFilter={weekFilter}
             onFilterChange={setFilterText}
             onGroupByChange={setGroupBy}
             onToggleHideDone={() => setHideDone(!hideDone)}
             onAddTask={handleAddTask}
             onToggleNotes={() => setShowNotes(!showNotes)}
-            onToggleDarkMode={toggleDarkMode}
+            themeMode={themeMode}
+            onCycleTheme={cycleThemeMode}
             onWeekFilterChange={setWeekFilter}
             onToggleEditor={handleToggleViewMode}
           />

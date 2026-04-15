@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import type { ProjectMeta, WeekFilter } from "../lib/types";
+import type { ThemeMode } from "../hooks/useDarkMode";
+import { ThemeIcon } from "./ThemeIcon";
 
 interface ToolbarProps {
   meta: ProjectMeta;
@@ -7,14 +9,14 @@ interface ToolbarProps {
   groupBy?: string | null;
   hideDone: boolean;
   showNotes: boolean;
-  darkMode: boolean;
+  themeMode: ThemeMode;
   weekFilter: WeekFilter;
   onFilterChange: (text: string) => void;
   onGroupByChange?: (field: string | null) => void;
   onToggleHideDone: () => void;
   onAddTask: () => void;
   onToggleNotes: () => void;
-  onToggleDarkMode: () => void;
+  onCycleTheme: () => void;
   onWeekFilterChange: (filter: WeekFilter) => void;
   onToggleEditor?: () => void;
 }
@@ -24,13 +26,13 @@ export function Toolbar({
   filterText,
   hideDone,
   showNotes,
-  darkMode,
+  themeMode,
   weekFilter,
   onFilterChange,
   onToggleHideDone,
   onAddTask,
   onToggleNotes,
-  onToggleDarkMode,
+  onCycleTheme,
   onWeekFilterChange,
   onToggleEditor,
 }: ToolbarProps) {
@@ -168,20 +170,12 @@ export function Toolbar({
         )}
 
         <button
-          onClick={onToggleDarkMode}
+          onClick={onCycleTheme}
           className="nh-btn"
           style={{ padding: "6px 8px" }}
-          title="Toggle dark mode"
+          title={`Theme: ${themeMode} (click to cycle)`}
         >
-          {darkMode ? (
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-          ) : (
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
-          )}
+          <ThemeIcon themeMode={themeMode} />
         </button>
 
         <button
