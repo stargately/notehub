@@ -356,17 +356,18 @@ button, a, input, select, textarea {
   background: var(--nh-bg-sunken);
 }
 
-.nh-qa-doc .milkdown.is-editing .milkdown-mermaid-editor {
+.nh-qa-doc .milkdown .milkdown-mermaid.is-editing .milkdown-mermaid-editor {
   display: block;
 }
 
 .nh-qa-doc .milkdown .milkdown-mermaid-source {
   display: block;
   width: 100%;
-  min-height: 120px;
+  box-sizing: border-box;
   padding: 10px 12px;
   border: 0;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
   background: transparent;
   color: var(--nh-text);
   caret-color: var(--nh-accent);

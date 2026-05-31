@@ -61,12 +61,22 @@ export function mermaidNodeView(darkMode: boolean) {
       }
     };
 
+    // Grow the textarea to fit all of its content (no inner scrollbar).
+    const autosize = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    };
+
     const setEditing = (on: boolean) => {
       editing = on;
       dom.classList.toggle("is-editing", on);
       if (on) {
         textarea.value = code;
-        requestAnimationFrame(() => textarea.focus());
+        // Size + focus after the element is visible and laid out.
+        requestAnimationFrame(() => {
+          autosize();
+          textarea.focus();
+        });
       }
     };
 
@@ -82,7 +92,10 @@ export function mermaidNodeView(darkMode: boolean) {
     preview.addEventListener("click", () => {
       if (!editing) setEditing(true);
     });
-    textarea.addEventListener("input", () => void renderPreview(textarea.value));
+    textarea.addEventListener("input", () => {
+      autosize();
+      void renderPreview(textarea.value);
+    });
     textarea.addEventListener("blur", () => {
       commit(textarea.value);
       setEditing(false);
