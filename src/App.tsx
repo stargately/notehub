@@ -212,7 +212,7 @@ function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col" style={{ background: "var(--nh-bg)" }}>
+    <div className="nh-app-root h-screen flex flex-col" style={{ background: "var(--nh-bg)" }}>
       <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
       {isTauri && tabs.length > 0 && (
         <TabBar

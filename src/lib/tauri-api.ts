@@ -88,10 +88,27 @@ export async function openFileDialog(): Promise<string | null> {
   }
 }
 
-export async function getProjectFilePaths(): Promise<string[]> {
-  if (!isTauri) return ["browser://sample-project.md"];
+export interface InitialSession {
+  paths: string[];
+  activeIndex: number;
+}
+
+export async function getInitialSession(): Promise<InitialSession> {
+  if (!isTauri) return { paths: ["browser://sample-project.md"], activeIndex: 0 };
   const invoke = await getInvoke();
-  return invoke<string[]>("get_project_file_paths");
+  return invoke<InitialSession>("get_project_file_paths");
+}
+
+export async function saveSession(paths: string[], activeIndex: number): Promise<void> {
+  if (!isTauri) return;
+  const invoke = await getInvoke();
+  await invoke<void>("save_session", { paths, activeIndex });
+}
+
+export async function noteRecentDocument(path: string): Promise<void> {
+  if (!isTauri || !path || path.startsWith("browser://")) return;
+  const invoke = await getInvoke();
+  await invoke<void>("note_recent_document", { path });
 }
 
 export async function readFile(path: string): Promise<string> {
@@ -127,6 +144,12 @@ export async function openUrl(url: string): Promise<void> {
   } else {
     window.open(url, "_blank");
   }
+}
+
+/** Write an HTML doc to a temp file and open it in the default browser (for printing). */
+export async function printHtml(html: string): Promise<void> {
+  const invoke = await getInvoke();
+  await invoke<void>("print_html", { html });
 }
 
 export async function writeFile(path: string, content: string): Promise<void> {

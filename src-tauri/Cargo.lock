@@ -2224,6 +2224,9 @@ version = "0.1.0"
 dependencies = [
  "notify",
  "notify-debouncer-mini",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "portable-pty",
  "serde",
  "serde_json",

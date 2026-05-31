@@ -94,6 +94,8 @@ edit the raw fence via the raw editor. Tables render inline too.
 - A file with no markers is just one full-width editor.
 
 Press `Cmd+/` to switch between the formatted editor and the raw markdown code editor.
+Press `Cmd+P` (or the **Print** button) to print the document as a compact, cheatsheet-style
+handout on letter-size pages — the two-column layout and mermaid diagrams are preserved.
 
 ## Custom Fields
 
@@ -139,6 +141,7 @@ Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the 
 | `Cmd+R` | Reload file |
 | `Cmd+S` | Save (or Save As for untitled) |
 | `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa`) |
+| `Cmd+P` | Print the QA doc (compact cheatsheet, letter size) |
 | `Cmd+1-9` | Switch tabs |
 | `Ctrl+`` `` | Toggle terminal |
 | `Escape` | Close detail drawer |

@@ -30,6 +30,7 @@ notehub/
 │   │   ├── markdown-parser.ts  # YAML frontmatter + table parser
 │   │   ├── qa-parser.ts        # layout: qa marker parser (>>>/<<<)
 │   │   ├── milkdown-mermaid.ts # Mermaid SVG node view for Milkdown
+│   │   ├── print.ts            # Render layout: qa to a print cheatsheet HTML
 │   │   └── tauri-api.ts        # Tauri IPC bridge
 │   └── styles/globals.css      # Tailwind + AG Grid theme
 ├── src-tauri/                  # Rust backend
@@ -187,6 +188,10 @@ same debounced `writeFile` path used by the Monaco editor (`useViewMode.handleEd
 - `Cmd+N` — New task
 - `Cmd+S` — Save (Save As for untitled)
 - `Cmd+/` — Toggle raw markdown editor (formatted WYSIWYG ↔ raw for `layout: qa`)
+- `Cmd+P` — Print the `layout: qa` doc (compact cheatsheet, letter size, two columns + diagrams).
+  WKWebView has no working `window.print()`, so `src/lib/print.ts` renders the markdown to a
+  self-contained HTML (via `marked` + light-theme mermaid) and the Rust `print_html` command
+  writes it to a temp file and opens it in the default browser to print.
 - `Cmd+1-9` — Switch tabs
 - `Ctrl+`` `` — Toggle terminal
 - `Escape` — Close detail drawer

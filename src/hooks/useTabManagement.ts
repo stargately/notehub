@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { resolveInitialFilePaths } from "./useProjectFile";
-import { isTauri, openFileDialog } from "../lib/tauri-api";
+import { resolveInitialSession } from "./useProjectFile";
+import { isTauri, openFileDialog, saveSession, noteRecentDocument } from "../lib/tauri-api";
 import type { TabInfo } from "../lib/types";
 
 let tabCounter = 0;
@@ -37,13 +37,28 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
 
   // Resolve initial files on mount
   useEffect(() => {
-    resolveInitialFilePaths().then((paths) => {
+    resolveInitialSession().then(({ paths, activeIndex }) => {
       const newTabs = paths.length > 0 ? paths.map(makeTab) : [makeTab(null)];
+      const idx = Math.min(Math.max(activeIndex, 0), newTabs.length - 1);
       setTabs(newTabs);
-      setActiveTabId(newTabs[0].id);
+      setActiveTabId(newTabs[idx].id);
       setInitialized(true);
     });
   }, []);
+
+  // Persist session (open file paths + active tab index) whenever tabs change
+  useEffect(() => {
+    if (!initialized) return;
+    const persistable = tabs
+      .map((t, i) => ({ path: t.filePath, index: i, id: t.id }))
+      .filter(
+        (entry): entry is { path: string; index: number; id: string } =>
+          !!entry.path && !entry.path.startsWith("browser://"),
+      );
+    const paths = persistable.map((e) => e.path);
+    const active = persistable.findIndex((e) => e.id === activeTabId);
+    saveSession(paths, active >= 0 ? active : 0);
+  }, [tabs, activeTabId, initialized]);
 
   const activeFilePath = useMemo(
     () => tabs.find((t) => t.id === activeTabId)?.filePath ?? null,
@@ -64,6 +79,7 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
   const handleAddTab = useCallback(async () => {
     const path = await openFileDialog();
     if (!path) return;
+    noteRecentDocument(path);
     const existing = tabs.find((t) => t.filePath === path);
     if (existing) {
       setActiveTabId(existing.id);
@@ -108,6 +124,7 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
           /\.mdx?$/i.test(p)
         );
         if (mdPaths.length === 0) return;
+        for (const p of mdPaths) noteRecentDocument(p);
 
         setTabs((prev) => {
           const existing = new Set(prev.map((t) => t.filePath));

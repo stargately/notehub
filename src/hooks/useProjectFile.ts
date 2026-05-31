@@ -2,15 +2,20 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { ProjectData, Task } from "../lib/types";
 import { resolveFieldType } from "../lib/types";
 import { parseProjectMd, serializeProjectMd } from "../lib/markdown-parser";
-import { getProjectFilePaths, readFile, writeFile, getDefaultProjectContent } from "../lib/tauri-api";
+import {
+  getInitialSession,
+  readFile,
+  writeFile,
+  getDefaultProjectContent,
+  type InitialSession,
+} from "../lib/tauri-api";
 import { toast } from "sonner";
 
-export async function resolveInitialFilePaths(): Promise<string[]> {
+export async function resolveInitialSession(): Promise<InitialSession> {
   try {
-    const paths = await getProjectFilePaths();
-    return paths;
+    return await getInitialSession();
   } catch {
-    return [];
+    return { paths: [], activeIndex: 0 };
   }
 }
 

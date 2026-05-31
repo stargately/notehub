@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MarkdownWysiwyg } from "./MarkdownWysiwyg";
 import { ThemeIcon } from "./ThemeIcon";
 import type { ThemeMode } from "../hooks/useDarkMode";
+import { printQaDocument } from "../lib/print";
 import {
   splitFrontmatter,
   parseQaBlocks,
@@ -47,6 +48,23 @@ export function QaLayout({
   const parsedRef = useRef(parsed);
   parsedRef.current = parsed;
 
+  // Latest content/title in a ref so the print shortcut always uses current values.
+  const printRef = useRef<() => void>(() => {});
+  printRef.current = () => void printQaDocument(content, projectName || "Untitled");
+
+  // Cmd/Ctrl+P renders the doc to a standalone cheatsheet and opens it for printing
+  // (WKWebView can't print the live view, so we never call window.print() on it directly).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P")) {
+        e.preventDefault();
+        printRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // External content changes (reload, Monaco edit, tab switch) → re-parse + remount.
   useEffect(() => {
     if (content !== lastSyncedRef.current) {
@@ -83,10 +101,10 @@ export function QaLayout({
   const themeKey = `${mountKey}-${darkMode ? "d" : "l"}`;
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="nh-qa-layout flex-1 flex flex-col overflow-hidden">
       {/* Header bar (mirrors the Monaco editor header) */}
       <div
-        className="flex flex-wrap items-center gap-2 px-4 py-2 border-b"
+        className="nh-qa-topbar flex flex-wrap items-center gap-2 px-4 py-2 border-b"
         style={{ borderColor: "var(--nh-border)", background: "var(--nh-bg-elevated)" }}
       >
         <h1 className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--nh-text)" }}>
@@ -99,9 +117,15 @@ export function QaLayout({
           Q&amp;A
         </span>
         <span className="text-[10px]" style={{ color: "var(--nh-text-tertiary)" }}>
-          {isMac ? "Cmd" : "Ctrl"}+/ to edit raw
+          {isMac ? "Cmd" : "Ctrl"}+/ to edit raw · {isMac ? "Cmd" : "Ctrl"}+P to print
         </span>
         <div className="flex-1" />
+        <button onClick={() => printRef.current()} className="nh-btn" title="Print (cheatsheet, letter size)">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" />
+          </svg>
+          Print
+        </button>
         <button onClick={onToggleEditor} className="nh-btn">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
