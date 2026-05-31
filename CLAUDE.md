@@ -14,6 +14,8 @@ notehub/
 │   │   ├── TaskTable.tsx       # AG Grid task table
 │   │   ├── TaskDetailDrawer.tsx # Side drawer with Tiptap editor
 │   │   ├── ProjectNotes.tsx    # Project notes (Tiptap)
+│   │   ├── QaLayout.tsx        # Two-column Q&A view (layout: qa)
+│   │   ├── MarkdownWysiwyg.tsx # Milkdown Crepe WYSIWYG editor wrapper
 │   │   ├── Toolbar.tsx         # Filters, toggles, new task
 │   │   ├── TabBar.tsx          # Multi-file tabs
 │   │   ├── TerminalPanel.tsx    # Integrated terminal (xterm.js)
@@ -26,6 +28,7 @@ notehub/
 │   ├── lib/
 │   │   ├── types.ts            # TypeScript interfaces
 │   │   ├── markdown-parser.ts  # YAML frontmatter + table parser
+│   │   ├── qa-parser.ts        # layout: qa marker parser (>>>/<<<)
 │   │   └── tauri-api.ts        # Tauri IPC bridge
 │   └── styles/globals.css      # Tailwind + AG Grid theme
 ├── src-tauri/                  # Rust backend
@@ -47,6 +50,8 @@ notehub/
 | Frontend | React 18, TypeScript 5.6, Vite 6 |
 | Data Grid | AG Grid Community 33 |
 | Rich Text | Tiptap 2.11 (StarterKit, Placeholder, TaskList) |
+| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa`) |
+| Code Editor | Monaco (`@monaco-editor/react`) for raw markdown |
 | Styling | Tailwind CSS 3.4, `@tailwindcss/typography` |
 | Parsing | gray-matter (YAML frontmatter) |
 | Terminal | portable-pty 0.8 (Rust), @xterm/xterm 5 (frontend) |
@@ -116,6 +121,44 @@ assignee_options: [Name1, Name2]
 <p>Project-wide notes in HTML</p>
 ```
 
+## `layout: qa` — Q&A document layout
+
+A file can opt out of the task-table UI and into a document layout by setting
+`layout: qa` in its frontmatter. Such a file is treated as **raw markdown** (no task
+table) and rendered in a Typora-style WYSIWYG editor (Milkdown Crepe). `Cmd+/` toggles
+to the raw Monaco code editor and back.
+
+The body is split by marker lines (each must be on its own line):
+
+```markdown
+---
+layout: qa
+---
+
+Anything before the first **>>>** is a full-width header.
+
+**>>>**
+The question (left column)
+**<<<**
+The answer (right column)
+
+**>>>**
+A second question…
+**<<<**
+…and its answer. Multiple blocks stack down the page.
+```
+
+- Content before the first `**>>>**` → full-width header editor.
+- Text between `**>>>**` and `**<<<**` → left column.
+- Text after `**<<<**` (until the next `**>>>**` or EOF) → right column.
+- A file with no markers renders as one full-width editor.
+
+Parsing/serialization lives in `src/lib/qa-parser.ts` (`splitFrontmatter`,
+`parseQaBlocks`, `assembleQa`). Frontmatter is preserved **verbatim** — QA files never
+round-trip through `serializeProjectMd`, so the task-format serializer can't pollute
+the frontmatter or drop the document body. Edits are written directly to disk via the
+same debounced `writeFile` path used by the Monaco editor (`useViewMode.handleEditorChange`).
+
 ## Architecture Notes
 
 - **Auto-generated IDs**: When a markdown file has no `id` column, the parser auto-assigns sequential IDs (`"001"`, `"002"`, ...) so AG Grid always has unique row keys. These IDs get serialized back on save.
@@ -133,7 +176,7 @@ assignee_options: [Name1, Name2]
 - `Cmd+F` — Focus filter
 - `Cmd+N` — New task
 - `Cmd+S` — Save (Save As for untitled)
-- `Cmd+/` — Toggle raw markdown editor
+- `Cmd+/` — Toggle raw markdown editor (formatted WYSIWYG ↔ raw for `layout: qa`)
 - `Cmd+1-9` — Switch tabs
 - `Ctrl+`` `` — Toggle terminal
 - `Escape` — Close detail drawer

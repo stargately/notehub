@@ -64,6 +64,33 @@ The `id` column is optional. If omitted, NoteHub auto-generates sequential IDs (
 <p>Project-wide notes</p>
 ```
 
+## Q&A Layout (`layout: qa`)
+
+Set `layout: qa` in a file's frontmatter to turn it into a document instead of a task
+table. The content is shown in a **Typora-style WYSIWYG editor** (formatted as you type),
+and you can split it into two columns using marker lines:
+
+```markdown
+---
+layout: qa
+---
+
+Intro text before the first marker spans the full width.
+
+**>>>**
+What's the question? (shows on the left)
+**<<<**
+The answer, notes, diagrams, tables — shows on the right.
+```
+
+- Everything before the first `**>>>**` becomes a full-width header.
+- Text between `**>>>**` and `**<<<**` is the **left** column.
+- Text after `**<<<**` (until the next `**>>>**`) is the **right** column.
+- Stack multiple `**>>>**`/`**<<<**` blocks for multiple Q&A rows.
+- A file with no markers is just one full-width editor.
+
+Press `Cmd+/` to switch between the formatted editor and the raw markdown code editor.
+
 ## Custom Fields
 
 Any field added to `columns` in frontmatter automatically appears as a column. By default, custom fields render as plain text. Use the `type` property to get richer rendering:
@@ -107,7 +134,7 @@ Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the 
 | `Cmd+F` | Focus filter |
 | `Cmd+R` | Reload file |
 | `Cmd+S` | Save (or Save As for untitled) |
-| `Cmd+/` | Toggle raw markdown editor |
+| `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa`) |
 | `Cmd+1-9` | Switch tabs |
 | `Ctrl+`` `` | Toggle terminal |
 | `Escape` | Close detail drawer |

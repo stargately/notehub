@@ -21,6 +21,7 @@ import { TabBar } from "./components/TabBar";
 import { ThemeIcon } from "./components/ThemeIcon";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { MarkdownEditor } from "./components/MarkdownEditor";
+import { QaLayout } from "./components/QaLayout";
 import { Toaster } from "sonner";
 
 function App() {
@@ -90,7 +91,9 @@ function App() {
   // avoiding race conditions with stale projectData from a previous filePath).
   const onDataLoaded = useCallback((data: ProjectData) => {
     if (activeTabId) {
-      undoHistory.initTab(activeTabId, serializeProjectMd(data));
+      // QA docs are edited as raw markdown, not serialized from tasks.
+      const snapshot = data.meta.layout === "qa" ? data.rawContent : serializeProjectMd(data);
+      undoHistory.initTab(activeTabId, snapshot);
     }
   }, [activeTabId, undoHistory]);
 
@@ -155,6 +158,8 @@ function App() {
 
   // File watcher for external changes
   useFileWatcher(filePath, loadFile);
+
+  const isQa = projectData?.meta.layout === "qa";
 
   if (!initialized || (loading && tabs.length === 0)) {
     return (
@@ -265,6 +270,15 @@ function App() {
             />
           </div>
         </>
+      ) : isQa ? (
+        <QaLayout
+          content={editorContent}
+          onChange={handleEditorChange}
+          onToggleEditor={handleToggleViewMode}
+          onCycleTheme={cycleThemeMode}
+          themeMode={themeMode}
+          projectName={projectData?.meta.project}
+        />
       ) : (
         <>
           <Toolbar

@@ -29,6 +29,8 @@ export function resolveFieldType(col: ColumnConfig): FieldType {
 export interface ProjectMeta {
   project: string;
   created: string;
+  /** Optional document layout. "qa" renders a Typora-style two-column Q&A view. */
+  layout?: string;
   views: Record<string, ViewConfig>;
   columns: ColumnConfig[];
   status_options: string[];

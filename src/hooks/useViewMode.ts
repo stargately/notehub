@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { ProjectData, TabInfo, ViewMode } from "../lib/types";
 import { serializeProjectMd } from "../lib/markdown-parser";
 import { saveFileDialog, writeFile } from "../lib/tauri-api";
@@ -36,7 +36,28 @@ export function useViewMode({
     setEditorContentMap((prev) => ({ ...prev, [activeTabId]: content }));
   }, [activeTabId]);
 
+  const isQa = projectData?.meta.layout === "qa";
+
+  // For `layout: qa` files the QA view and the Monaco editor share one raw string
+  // (editorContent). Seed it from the parsed file whenever the file content changes
+  // (load, reload, tab switch). QA edits never touch projectData.rawContent, so this
+  // effect does not fire on them and won't clobber in-progress edits.
+  useEffect(() => {
+    if (!isQa) return;
+    setEditorContentMap((prev) =>
+      prev[activeTabId] === projectData!.rawContent
+        ? prev
+        : { ...prev, [activeTabId]: projectData!.rawContent }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isQa, activeTabId, projectData?.rawContent]);
+
   const handleToggleViewMode = useCallback(() => {
+    if (isQa) {
+      // QA <-> Monaco share editorContent; just flip the mode. No task serialization.
+      setViewMode(viewMode === "grid" ? "editor" : "grid");
+      return;
+    }
     if (viewMode === "grid") {
       if (projectData) {
         const serialized = serializeProjectMd(projectData);
@@ -54,7 +75,7 @@ export function useViewMode({
         setViewMode("grid");
       }
     }
-  }, [viewMode, projectData, editorContent, activeTabId, undoHistory, replaceFromRaw, setEditorContent, setViewMode, setSelectedTaskId, setShowNotes]);
+  }, [isQa, viewMode, projectData, editorContent, activeTabId, undoHistory, replaceFromRaw, setEditorContent, setViewMode, setSelectedTaskId, setShowNotes]);
 
   const editorSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleEditorChange = useCallback(

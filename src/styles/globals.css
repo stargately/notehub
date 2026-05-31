@@ -262,3 +262,67 @@ button, a, input, select, textarea {
 .nh-fade-in {
   animation: fadeIn 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* ─── QA layout (layout: qa) ─── */
+.nh-qa-doc {
+  background: var(--nh-bg);
+  padding: 8px 0 64px;
+}
+
+.nh-qa-header {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 8px 16px;
+}
+
+.nh-qa-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 0;
+  border-top: 1px solid var(--nh-border);
+}
+
+.nh-qa-col {
+  min-width: 0;
+  padding: 8px 12px;
+}
+
+.nh-qa-col-left {
+  border-right: 1px solid var(--nh-border);
+  background: var(--nh-bg-sunken);
+}
+
+/* Map Milkdown Crepe theme variables onto NoteHub tokens. Scoped two-class deep so
+   these win over the theme's own `.milkdown` rules regardless of CSS import order.
+   NoteHub tokens already flip in dark mode, so this covers light + dark. */
+.nh-qa-doc .milkdown {
+  --crepe-color-background: var(--nh-bg);
+  --crepe-color-on-background: var(--nh-text);
+  --crepe-color-surface: var(--nh-bg-elevated);
+  --crepe-color-surface-low: var(--nh-bg-sunken);
+  --crepe-color-on-surface: var(--nh-text);
+  --crepe-color-on-surface-variant: var(--nh-text-secondary);
+  --crepe-color-outline: var(--nh-border);
+  --crepe-color-primary: var(--nh-accent);
+  --crepe-color-hover: var(--nh-bg-sunken);
+  --crepe-color-selected: var(--nh-accent-subtle);
+  --crepe-color-inline-area: var(--nh-bg-sunken);
+  /* Caret colors default to --crepe-color-outline (faint); use the accent so it's visible. */
+  --prosemirror-virtual-cursor-color: var(--nh-accent);
+  --crepe-font-default: "DM Sans", sans-serif;
+  --crepe-font-title: "DM Sans", sans-serif;
+  --crepe-font-code: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.nh-qa-doc .milkdown {
+  background: transparent;
+}
+
+.nh-qa-doc .milkdown .ProseMirror {
+  padding: 8px 0;
+  caret-color: var(--nh-accent);
+}
+
+.nh-qa-doc .milkdown .cm-editor .cm-content {
+  caret-color: var(--nh-accent);
+}
