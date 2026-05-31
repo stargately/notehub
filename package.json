@@ -21,6 +21,7 @@
   "dependencies": {
     "@milkdown/crepe": "^7.21.1",
     "@milkdown/kit": "^7.21.1",
+    "@milkdown/plugin-diagram": "^7.7.0",
     "@milkdown/react": "^7.21.1",
     "@monaco-editor/react": "^4.7.0",
     "@tauri-apps/api": "^2.2.0",

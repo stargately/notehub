@@ -17,6 +17,7 @@ interface QaLayoutProps {
   onToggleEditor: () => void;
   onCycleTheme: () => void;
   themeMode: ThemeMode;
+  darkMode: boolean;
   projectName?: string;
 }
 
@@ -36,7 +37,7 @@ function parse(content: string): ParsedState {
  * two-column row (question | answer). Edits round-trip back to raw markdown.
  */
 export function QaLayout({
-  content, onChange, onToggleEditor, onCycleTheme, themeMode, projectName,
+  content, onChange, onToggleEditor, onCycleTheme, themeMode, darkMode, projectName,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
   // Bumped only on EXTERNAL content changes, to force a remount of the (mount-once) editors.
@@ -78,6 +79,8 @@ export function QaLayout({
 
   const { doc } = parsed;
   const isMac = navigator.platform.includes("Mac");
+  // Remount editors on theme change so mermaid diagrams re-render in the matching theme.
+  const themeKey = `${mountKey}-${darkMode ? "d" : "l"}`;
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -113,25 +116,27 @@ export function QaLayout({
       <div className="nh-qa-doc flex-1 overflow-y-auto">
         {doc.header && (
           <div className="nh-qa-header">
-            <MarkdownWysiwyg key={`h-${mountKey}`} value={doc.header} onChange={updateHeader} placeholder="Write here…" />
+            <MarkdownWysiwyg key={`h-${themeKey}`} value={doc.header} onChange={updateHeader} darkMode={darkMode} placeholder="Write here…" />
           </div>
         )}
 
         {doc.blocks.map((block, i) => (
-          <div key={`b-${i}-${mountKey}`} className="nh-qa-row">
+          <div key={`b-${i}-${themeKey}`} className="nh-qa-row">
             <div className="nh-qa-col nh-qa-col-left">
               <MarkdownWysiwyg
-                key={`l-${i}-${mountKey}`}
+                key={`l-${i}-${themeKey}`}
                 value={block.left}
                 onChange={(v) => updateBlock(i, "left", v)}
+                darkMode={darkMode}
                 placeholder="Question…"
               />
             </div>
             <div className="nh-qa-col nh-qa-col-right">
               <MarkdownWysiwyg
-                key={`r-${i}-${mountKey}`}
+                key={`r-${i}-${themeKey}`}
                 value={block.right}
                 onChange={(v) => updateBlock(i, "right", v)}
+                darkMode={darkMode}
                 placeholder="Answer…"
               />
             </div>

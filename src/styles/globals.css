@@ -326,3 +326,65 @@ button, a, input, select, textarea {
 .nh-qa-doc .milkdown .cm-editor .cm-content {
   caret-color: var(--nh-accent);
 }
+
+/* Mermaid diagrams */
+.nh-qa-doc .milkdown .milkdown-mermaid {
+  margin: 12px 0;
+  border: 1px solid var(--nh-border);
+  border-radius: var(--nh-radius);
+  background: var(--nh-bg-elevated);
+  overflow: hidden;
+}
+
+.nh-qa-doc .milkdown .milkdown-mermaid-preview {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  cursor: pointer;
+  overflow-x: auto;
+}
+
+.nh-qa-doc .milkdown .milkdown-mermaid-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Source editor — hidden until the diagram is clicked */
+.nh-qa-doc .milkdown .milkdown-mermaid-editor {
+  display: none;
+  border-bottom: 1px solid var(--nh-border);
+  background: var(--nh-bg-sunken);
+}
+
+.nh-qa-doc .milkdown.is-editing .milkdown-mermaid-editor {
+  display: block;
+}
+
+.nh-qa-doc .milkdown .milkdown-mermaid-source {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 0;
+  resize: vertical;
+  background: transparent;
+  color: var(--nh-text);
+  caret-color: var(--nh-accent);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+}
+
+.nh-qa-doc .milkdown .milkdown-mermaid-empty {
+  color: var(--nh-text-tertiary);
+  font-size: 13px;
+}
+
+.nh-qa-doc .milkdown .milkdown-mermaid-error {
+  margin: 0;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--nh-text-secondary);
+  white-space: pre-wrap;
+}

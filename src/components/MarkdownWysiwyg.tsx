@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Crepe } from "@milkdown/crepe";
+import { diagram } from "@milkdown/plugin-diagram";
+import { mermaidNodeView } from "../lib/milkdown-mermaid";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/classic.css";
 
@@ -9,13 +11,15 @@ interface MarkdownWysiwygProps {
   onChange: (markdown: string) => void;
   placeholder?: string;
   className?: string;
+  /** Controls the mermaid diagram theme (light/dark). */
+  darkMode?: boolean;
 }
 
 /**
  * Thin React wrapper around a Milkdown Crepe instance — a Typora-style WYSIWYG
  * markdown editor that round-trips to markdown. One instance per mount.
  */
-export function MarkdownWysiwyg({ value, onChange, placeholder, className }: MarkdownWysiwygProps) {
+export function MarkdownWysiwyg({ value, onChange, placeholder, className, darkMode }: MarkdownWysiwygProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const crepeRef = useRef<Crepe | null>(null);
 
@@ -35,6 +39,10 @@ export function MarkdownWysiwyg({ value, onChange, placeholder, className }: Mar
         ? { [Crepe.Feature.Placeholder]: { text: placeholder } }
         : undefined,
     });
+
+    // Render ```mermaid fences as diagrams. `diagram` adds the schema + remark parsing;
+    // mermaidNodeView draws the SVG (the plugin ships no renderer).
+    crepe.editor.use(diagram).use(mermaidNodeView(!!darkMode));
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {

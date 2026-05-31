@@ -80,8 +80,12 @@ Intro text before the first marker spans the full width.
 **>>>**
 What's the question? (shows on the left)
 **<<<**
-The answer, notes, diagrams, tables — shows on the right.
+The answer, notes, tables, and ```mermaid diagrams — shows on the right.
 ```
+
+` ```mermaid ` code blocks render as live diagrams in the formatted view. **Click a
+diagram** to edit its source inline (Esc cancels, Cmd/Ctrl+Enter confirms); you can also
+edit the raw fence via the raw editor. Tables render inline too.
 
 - Everything before the first `**>>>**` becomes a full-width header.
 - Text between `**>>>**` and `**<<<**` is the **left** column.

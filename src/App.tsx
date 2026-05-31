@@ -277,6 +277,7 @@ function App() {
           onToggleEditor={handleToggleViewMode}
           onCycleTheme={cycleThemeMode}
           themeMode={themeMode}
+          darkMode={darkMode}
           projectName={projectData?.meta.project}
         />
       ) : (

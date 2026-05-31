@@ -29,6 +29,7 @@ notehub/
 │   │   ├── types.ts            # TypeScript interfaces
 │   │   ├── markdown-parser.ts  # YAML frontmatter + table parser
 │   │   ├── qa-parser.ts        # layout: qa marker parser (>>>/<<<)
+│   │   ├── milkdown-mermaid.ts # Mermaid SVG node view for Milkdown
 │   │   └── tauri-api.ts        # Tauri IPC bridge
 │   └── styles/globals.css      # Tailwind + AG Grid theme
 ├── src-tauri/                  # Rust backend
@@ -51,6 +52,7 @@ notehub/
 | Data Grid | AG Grid Community 33 |
 | Rich Text | Tiptap 2.11 (StarterKit, Placeholder, TaskList) |
 | WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa`) |
+| Diagrams | Mermaid 10 via `@milkdown/plugin-diagram` (custom node view) |
 | Code Editor | Monaco (`@monaco-editor/react`) for raw markdown |
 | Styling | Tailwind CSS 3.4, `@tailwindcss/typography` |
 | Parsing | gray-matter (YAML frontmatter) |
@@ -152,6 +154,14 @@ A second question…
 - Text between `**>>>**` and `**<<<**` → left column.
 - Text after `**<<<**` (until the next `**>>>**` or EOF) → right column.
 - A file with no markers renders as one full-width editor.
+
+**Mermaid diagrams**: ` ```mermaid ` fenced blocks render as diagrams inside the
+WYSIWYG view. `@milkdown/plugin-diagram` parses the fence into a `diagram` node (and
+serializes it back to a fence on save); it ships no renderer, so `src/lib/milkdown-mermaid.ts`
+adds a ProseMirror node view that draws the SVG via `mermaid.render`, themed to light/dark.
+Clicking the diagram reveals an inline source editor above it; edits live-preview and, on
+blur, commit to the node's `value` attr via `setNodeMarkup` (Esc cancels, Cmd/Ctrl+Enter
+confirms). You can also edit the raw fence via the raw editor (`Cmd+/`).
 
 Parsing/serialization lives in `src/lib/qa-parser.ts` (`splitFrontmatter`,
 `parseQaBlocks`, `assembleQa`). Frontmatter is preserved **verbatim** — QA files never
