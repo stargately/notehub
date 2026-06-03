@@ -1,7 +1,17 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { resolveInitialSession } from "./useProjectFile";
-import { isTauri, openFileDialog, saveSession, noteRecentDocument, getWindowLabel, isDirectory } from "../lib/tauri-api";
+import {
+  isTauri,
+  openFileDialog,
+  saveSession,
+  noteRecentDocument,
+  getWindowLabel,
+  isDirectory,
+  canonicalizePath,
+  startWatching,
+} from "../lib/tauri-api";
 import { fileKindForPath } from "../lib/file-kind";
+import { parentDir, isUnderRoot } from "../lib/tree-refresh";
 import type { TabInfo } from "../lib/types";
 
 let tabCounter = 0;
@@ -64,7 +74,11 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
       }
       const { paths, activeIndex } = await resolveInitialSession();
       if (cancelled) return;
-      const newTabs = paths.length > 0 ? paths.map(makeTab) : [makeTab(null)];
+      // Canonicalize so restored tabs match the watcher's realpath events (live reload).
+      const canonicalPaths = await Promise.all(paths.map((p) => canonicalizePath(p)));
+      if (cancelled) return;
+      const newTabs =
+        canonicalPaths.length > 0 ? canonicalPaths.map(makeTab) : [makeTab(null)];
       const idx = Math.min(Math.max(activeIndex, 0), newTabs.length - 1);
       setTabs(newTabs);
       setActiveTabId(newTabs[idx].id);
@@ -107,24 +121,36 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
   }, [activeTabId]);
 
   // Open a file path as a tab (focus it if already open). Shared by the dialog, the file-tree
-  // sidebar, drag-drop, and OS file association.
-  const openPath = useCallback((path: string) => {
-    noteRecentDocument(path);
-    setTabs((prev) => {
-      const existing = prev.find((t) => t.filePath === path);
-      if (existing) {
-        setActiveTabId(existing.id);
-        return prev;
+  // sidebar, drag-drop, and OS file association. Canonicalizes the path so it matches the
+  // watcher's realpath events, and ensures a watcher covers it so the editor live-reloads on
+  // external edits (files inside the workspace are already covered by the recursive root watcher).
+  const openPath = useCallback(
+    async (path: string) => {
+      const canonical = await canonicalizePath(path);
+      noteRecentDocument(canonical);
+      if (!isUnderRoot(canonical, workspaceRoot)) {
+        startWatching(parentDir(canonical));
       }
-      const tab = makeTab(path);
-      setActiveTabId(tab.id);
-      return [...prev, tab];
-    });
-  }, []);
+      setTabs((prev) => {
+        const existing = prev.find((t) => t.filePath === canonical);
+        if (existing) {
+          setActiveTabId(existing.id);
+          return prev;
+        }
+        const tab = makeTab(canonical);
+        setActiveTabId(tab.id);
+        return [...prev, tab];
+      });
+    },
+    [workspaceRoot],
+  );
+  // Stable ref so the drag-drop / open-files listeners (mounted once) call the latest openPath.
+  const openPathRef = useRef(openPath);
+  openPathRef.current = openPath;
 
   const handleAddTab = useCallback(async () => {
     const path = await openFileDialog();
-    if (path) openPath(path);
+    if (path) await openPath(path);
   }, [openPath]);
 
   const handleCloseTab = useCallback(
@@ -162,25 +188,10 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
 
         // Folders open as a workspace; files open as tabs (md → its views, others as raw/image).
         const dirFlags = await Promise.all(dropped.map((p: string) => isDirectory(p)));
-        const folders = dropped.filter((_: string, i: number) => dirFlags[i]);
-        const files = dropped.filter((_: string, i: number) => !dirFlags[i]);
-        for (const f of folders) onOpenFolderRef.current?.(f);
-        if (files.length === 0) return;
-        for (const p of files) noteRecentDocument(p);
-
-        setTabs((prev) => {
-          const existing = new Set(prev.map((t) => t.filePath));
-          const newTabs = files
-            .filter((p: string) => !existing.has(p))
-            .map(makeTab);
-          if (newTabs.length === 0) {
-            const match = prev.find((t) => t.filePath === files[0]);
-            if (match) setActiveTabId(match.id);
-            return prev;
-          }
-          setActiveTabId(newTabs[newTabs.length - 1].id);
-          return [...prev, ...newTabs];
-        });
+        for (let i = 0; i < dropped.length; i++) {
+          if (dirFlags[i]) onOpenFolderRef.current?.(dropped[i]);
+          else await openPathRef.current(dropped[i]);
+        }
       });
     })();
 
@@ -194,23 +205,8 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
 
     (async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen<string[]>("open-files", (event) => {
-        const paths = event.payload;
-        if (paths.length === 0) return;
-
-        setTabs((prev) => {
-          const existing = new Set(prev.map((t) => t.filePath));
-          const newTabs = paths
-            .filter((p) => !existing.has(p))
-            .map(makeTab);
-          if (newTabs.length === 0) {
-            const match = prev.find((t) => t.filePath === paths[0]);
-            if (match) setActiveTabId(match.id);
-            return prev;
-          }
-          setActiveTabId(newTabs[newTabs.length - 1].id);
-          return [...prev, ...newTabs];
-        });
+      unlisten = await listen<string[]>("open-files", async (event) => {
+        for (const p of event.payload) await openPathRef.current(p);
       });
     })();
 

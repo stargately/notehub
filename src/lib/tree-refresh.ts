@@ -18,6 +18,15 @@ export function parentDir(path: string): string {
   return i > 0 ? path.slice(0, i) : path;
 }
 
+/**
+ * Whether `path` lives inside `root`'s subtree. Used to decide if an opened file already has
+ * watcher coverage from the recursive workspace-root watcher (so we don't start a redundant
+ * per-directory watcher). The trailing `/` prevents `/a/b` from matching a sibling `/a/bc`.
+ */
+export function isUnderRoot(path: string, root: string | null): boolean {
+  return !!root && path.startsWith(root.endsWith("/") ? root : root + "/");
+}
+
 async function ensureStarted() {
   if (started || !isTauri) return;
   started = true;

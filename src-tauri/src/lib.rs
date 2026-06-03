@@ -26,6 +26,9 @@ pub struct AppState {
     /// Live `window label -> canonical workspace root` map. Lets a spawned window fetch its
     /// folder and powers "re-opening the same folder focuses its window".
     pub workspace_windows: Mutex<HashMap<String, String>>,
+    /// Canonical directories that already have a watcher thread, so `ensure_watching` never
+    /// spawns a duplicate (would cause double `file-changed` events / reloads).
+    pub watched_dirs: Mutex<std::collections::HashSet<String>>,
 }
 
 #[derive(Deserialize)]
@@ -92,6 +95,36 @@ fn reconcile_session(
     }
 }
 
+/// Record `dir` as watched, returning whether it was newly added (i.e. a watcher should be
+/// spawned). Pure dedup logic, split out from `ensure_watching` so it can be unit-tested
+/// without an `AppHandle` or a real thread.
+fn mark_watched(set: &mut std::collections::HashSet<String>, dir: &str) -> bool {
+    set.insert(dir.to_string())
+}
+
+/// Start a recursive watcher on `dir` if one isn't already running for it. Idempotent: the
+/// canonical dir is tracked in `AppState.watched_dirs`, so calling this for the workspace root,
+/// restored-session dirs, and every opened file's directory never spawns duplicate watchers.
+pub(crate) fn ensure_watching(app: &AppHandle, dir: &str) {
+    let canonical = fs::canonicalize(dir)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| dir.to_string());
+    {
+        let state = app.state::<AppState>();
+        let mut set = match state.watched_dirs.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        if !mark_watched(&mut set, &canonical) {
+            return; // already watching this directory
+        }
+    }
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        let _ = watcher::start_watcher(&handle, &canonical);
+    });
+}
+
 fn load_persisted_session(app: &AppHandle) -> InitialSession {
     let path = match session_file_path(app) {
         Ok(p) => p,
@@ -139,6 +172,7 @@ pub fn run() {
             }),
             window_counter: AtomicUsize::new(1),
             workspace_windows: Mutex::new(HashMap::new()),
+            watched_dirs: Mutex::new(std::collections::HashSet::new()),
         })
         .manage(terminal::TerminalState::new())
         .invoke_handler(tauri::generate_handler![
@@ -185,19 +219,13 @@ pub fn run() {
             for p in &paths {
                 recent_docs::note(app.handle(), p.clone());
             }
-            // Start a file watcher for each unique parent directory
-            let mut watched_dirs = std::collections::HashSet::new();
+            // Start a file watcher for each restored file's parent directory (deduped).
             for p in &paths {
                 if let Some(dir) = std::path::Path::new(p)
                     .parent()
                     .map(|d| d.to_string_lossy().to_string())
                 {
-                    if watched_dirs.insert(dir.clone()) {
-                        let handle = app.handle().clone();
-                        std::thread::spawn(move || {
-                            let _ = watcher::start_watcher(&handle, &dir);
-                        });
-                    }
+                    ensure_watching(app.handle(), &dir);
                 }
             }
 
@@ -239,8 +267,22 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_markdown_file, reconcile_session, write_atomic};
+    use super::{is_markdown_file, mark_watched, reconcile_session, write_atomic};
+    use std::collections::HashSet;
     use std::fs;
+
+    #[test]
+    fn mark_watched_dedups_directories() {
+        let mut set = HashSet::new();
+        // First time a dir is seen → spawn a watcher.
+        assert!(mark_watched(&mut set, "/home/me/proj"));
+        // Same dir again → no-op (already watched).
+        assert!(!mark_watched(&mut set, "/home/me/proj"));
+        // A different dir → spawn.
+        assert!(mark_watched(&mut set, "/home/me/other"));
+        assert!(!mark_watched(&mut set, "/home/me/other"));
+        assert_eq!(set.len(), 2);
+    }
 
     #[test]
     fn is_markdown_file_accepts_existing_md_and_mdx() {

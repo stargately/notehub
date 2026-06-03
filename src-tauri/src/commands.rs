@@ -304,10 +304,8 @@ pub async fn print_html(app: AppHandle, html: String, name: Option<String>) -> R
 
 #[tauri::command]
 pub async fn start_watching(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    let handle = app.clone();
-    std::thread::spawn(move || {
-        let _ = crate::watcher::start_watcher(&handle, &path);
-    });
+    // Idempotent: dedups against directories already watched (workspace root, restored files).
+    crate::ensure_watching(&app, &path);
     Ok(())
 }
 
@@ -353,8 +351,9 @@ pub fn kill_terminal(state: State<TerminalState>, session_id: u32) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::{
-        find_window_for_workspace, is_noise_dir, looks_binary, print_basename, read_dir, read_file,
-        read_text_file, sort_dir_entries, write_file, DirEntryInfo,
+        canonicalize, find_window_for_workspace, is_directory, is_noise_dir, looks_binary,
+        print_basename, read_dir, read_file, read_text_file, sort_dir_entries, write_file,
+        DirEntryInfo,
     };
     use std::collections::HashMap;
 
@@ -515,6 +514,38 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.contains("Failed to read dir"), "got: {err}");
+    }
+
+    #[test]
+    fn is_directory_distinguishes_dirs_files_and_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(is_directory(dir.path().to_str().unwrap().to_string()));
+
+        let file = dir.path().join("note.md");
+        std::fs::write(&file, b"hi").unwrap();
+        assert!(!is_directory(file.to_str().unwrap().to_string()));
+
+        let missing = dir.path().join("nope");
+        assert!(!is_directory(missing.to_str().unwrap().to_string()));
+    }
+
+    #[test]
+    fn canonicalize_resolves_dot_segments_and_errors_on_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+
+        // A path with a `..` segment resolves to the canonical parent dir.
+        let messy = sub.join("..").to_string_lossy().to_string();
+        let resolved = canonicalize(messy).unwrap();
+        let expected = std::fs::canonicalize(dir.path())
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        assert_eq!(resolved, expected);
+
+        let missing = dir.path().join("ghost");
+        assert!(canonicalize(missing.to_str().unwrap().to_string()).is_err());
     }
 
     #[tokio::test]

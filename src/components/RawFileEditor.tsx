@@ -57,7 +57,20 @@ function TextView({
   darkMode: boolean;
   sync: FileSync;
 }) {
-  const { content, onChange, loading, error } = useRawFile(filePath, sync);
+  const { content, onChange, loading, error, reload } = useRawFile(filePath, sync);
+
+  // Cmd+R reloads the active raw doc from disk (parity with markdown's Cmd+R). Clean buffers
+  // also auto-reload via useRawFile's watcher; this is the explicit manual reload.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "r") {
+        e.preventDefault();
+        reload();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [reload]);
 
   if (error?.includes("binary")) {
     return <BinaryPlaceholder filePath={filePath} />;
