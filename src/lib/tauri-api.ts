@@ -1,3 +1,5 @@
+import type { DirEntry } from "./types";
+
 export const isTauri = !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 
 // Lazy-load invoke to avoid top-level await
@@ -89,21 +91,118 @@ export async function openFileDialog(): Promise<string | null> {
   }
 }
 
+/** Open a directory picker; returns the chosen folder path or null if cancelled. */
+export async function openFolderDialog(): Promise<string | null> {
+  if (!isTauri) return null;
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selected = await open({ directory: true, multiple: false });
+    return (selected as string) || null;
+  } catch {
+    return null;
+  }
+}
+
 export interface InitialSession {
   paths: string[];
   activeIndex: number;
+  workspaceRoot?: string | null;
 }
 
 export async function getInitialSession(): Promise<InitialSession> {
-  if (!isTauri) return { paths: ["browser://sample-project.md"], activeIndex: 0 };
+  if (!isTauri)
+    return { paths: ["browser://sample-project.md"], activeIndex: 0, workspaceRoot: null };
   const invoke = await getInvoke();
   return invoke<InitialSession>("get_project_file_paths");
 }
 
-export async function saveSession(paths: string[], activeIndex: number): Promise<void> {
+export async function saveSession(
+  paths: string[],
+  activeIndex: number,
+  workspaceRoot: string | null = null,
+): Promise<void> {
   if (!isTauri) return;
   const invoke = await getInvoke();
-  await invoke<void>("save_session", { paths, activeIndex });
+  await invoke<void>("save_session", { paths, activeIndex, workspaceRoot });
+}
+
+// Workspace / file-tree bridges
+
+/** List one level of a directory (folders first, alphabetical; noise dirs hidden by Rust). */
+export async function readDir(path: string): Promise<DirEntry[]> {
+  if (!isTauri) return [];
+  const invoke = await getInvoke();
+  return invoke<DirEntry[]>("read_dir", { path });
+}
+
+/** Read any file as text; rejects with "binary" for non-text files (images, blobs, …). */
+export async function readTextFile(path: string): Promise<string> {
+  const invoke = await getInvoke();
+  return invoke<string>("read_text_file", { path });
+}
+
+/** Whether a path is a directory — routes a dropped path to the tree (folder) vs a tab (file). */
+export async function isDirectory(path: string): Promise<boolean> {
+  if (!isTauri) return false;
+  const invoke = await getInvoke();
+  return invoke<boolean>("is_directory", { path });
+}
+
+/** Start a recursive file watcher on a directory (emits "file-changed" for edits within it). */
+export async function startWatching(path: string): Promise<void> {
+  if (!isTauri) return;
+  const invoke = await getInvoke();
+  await invoke<void>("start_watching", { path });
+}
+
+/** Resolve a path to its canonical (realpath) form so it matches the watcher's event paths. */
+export async function canonicalizePath(path: string): Promise<string> {
+  if (!isTauri) return path;
+  try {
+    const invoke = await getInvoke();
+    return await invoke<string>("canonicalize", { path });
+  } catch {
+    return path;
+  }
+}
+
+/** Open `folder` as a workspace in a new window (or focus the window that already owns it). */
+export async function openWorkspaceWindow(folder: string): Promise<void> {
+  if (!isTauri) return;
+  const invoke = await getInvoke();
+  await invoke<void>("open_workspace_window", { folder });
+}
+
+/** Record this window's adopted workspace root (or clear it with null) in the backend map. */
+export async function setWorkspaceRoot(path: string | null): Promise<void> {
+  if (!isTauri) return;
+  const invoke = await getInvoke();
+  await invoke<void>("set_workspace_root", { path });
+}
+
+/** Fetch the workspace root this window was opened for (null if it has none yet). */
+export async function getWindowWorkspace(): Promise<string | null> {
+  if (!isTauri) return null;
+  const invoke = await getInvoke();
+  return invoke<string | null>("get_window_workspace");
+}
+
+/** Convert a filesystem path into a URL the webview can load (e.g. for <img src>). */
+export async function toAssetUrl(path: string): Promise<string> {
+  if (!isTauri) return path;
+  const { convertFileSrc } = await import("@tauri-apps/api/core");
+  return convertFileSrc(path);
+}
+
+/** Label of the current window ("main" for the primary window, "workspace-N" for spawned ones). */
+export async function getWindowLabel(): Promise<string> {
+  if (!isTauri) return "main";
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    return getCurrentWindow().label;
+  } catch {
+    return "main";
+  }
 }
 
 export async function noteRecentDocument(path: string): Promise<void> {

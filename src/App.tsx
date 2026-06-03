@@ -5,6 +5,7 @@ import { useFileSync } from "./hooks/useFileSync";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { useTabManagement } from "./hooks/useTabManagement";
+import { useWorkspace } from "./hooks/useWorkspace";
 import { useViewMode } from "./hooks/useViewMode";
 import { useTaskFilters } from "./hooks/useTaskFilters";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -22,6 +23,8 @@ import { TabBar } from "./components/TabBar";
 import { ThemeIcon } from "./components/ThemeIcon";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { MarkdownEditor } from "./components/MarkdownEditor";
+import { RawFileEditor } from "./components/RawFileEditor";
+import { Sidebar } from "./components/Sidebar";
 import { QaLayout } from "./components/QaLayout";
 import { deriveBaseName } from "./lib/print";
 import { ConflictModal } from "./components/ConflictModal";
@@ -47,10 +50,18 @@ function App() {
   const cleanupTabRef = useRef<(tabId: string) => void>(() => {});
 
   const {
+    workspaceRoot, ready: workspaceReady,
+    sidebarOpen, toggleSidebar, sidebarWidth, setSidebarWidth, openFolder, setWorkspace,
+  } = useWorkspace();
+
+  const {
     tabs, setTabs, activeTabId, setActiveTabId, initialized,
     activeFilePath, terminalCwd,
-    handleAddTab, handleCloseTab, handleSelectTab,
+    handleAddTab, handleCloseTab, handleSelectTab, openPath,
   } = useTabManagement({
+    workspaceRoot,
+    workspaceReady,
+    onOpenFolder: setWorkspace,
     onTabClosed: (id) => cleanupTabRef.current(id),
     onTabSwitch: () => {
       setFilterText("");
@@ -59,6 +70,10 @@ function App() {
       setSelectedTaskId(null);
     },
   });
+
+  // How the active tab renders: markdown → grid/qa/plain views; raw/image → RawFileEditor.
+  const activeKind = tabs.find((t) => t.id === activeTabId)?.kind ?? "markdown";
+  const isRawFile = activeKind === "raw" || activeKind === "image";
 
   // Debounced onBeforeSave: coalesces rapid edits (e.g. Tiptap keystrokes) into one undo step
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,7 +124,7 @@ function App() {
     filePath, projectData, loading, error,
     loadFile, updateTasks, updateTask, addTask, updateNotes,
     replaceFromRaw, flushSave,
-  } = useProjectFile(activeFilePath, onBeforeSave, onDataLoaded, fileSync);
+  } = useProjectFile(isRawFile ? null : activeFilePath, onBeforeSave, onDataLoaded, fileSync);
 
   const {
     viewMode, editorContent,
@@ -156,12 +171,23 @@ function App() {
     return undoHistory.redo(activeTabId);
   }, [activeTabId, undoHistory]);
 
+  // Raw/image tabs autosave themselves and have no grid/editor mode, so suppress the
+  // markdown-only Cmd+S and Cmd+/ actions while one is active.
+  const onSave = useCallback(() => {
+    if (isRawFile) return;
+    handleSave();
+  }, [isRawFile, handleSave]);
+  const onToggleView = useCallback(() => {
+    if (isRawFile) return;
+    handleToggleViewMode();
+  }, [isRawFile, handleToggleViewMode]);
+
   useKeyboardShortcuts({
-    loadFile, handleSave, handleToggleViewMode,
+    loadFile, handleSave: onSave, handleToggleViewMode: onToggleView,
     tabs, setActiveTabId, activeFilePath,
     setShowTerminal, setTerminalMounted,
     undoHistory, activeTabId, viewMode, replaceFromRaw,
-    flushPendingSnapshot,
+    flushPendingSnapshot, toggleSidebar,
   });
 
   const isQa = projectData?.meta.layout === "qa";
@@ -242,17 +268,37 @@ function App() {
         onKeepDisk={() => fileSync.resolveKeepDisk(loadFile)}
         onKeepMine={() => fileSync.resolveKeepMine()}
       />
-      {isTauri && tabs.length > 0 && (
-        <TabBar
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelectTab={handleSelectTab}
-          onCloseTab={handleCloseTab}
-          onAddTab={handleAddTab}
-        />
-      )}
+      <div className="flex-1 flex flex-row overflow-hidden">
+        {isTauri && (
+          <Sidebar
+            open={sidebarOpen}
+            width={sidebarWidth}
+            onWidthChange={setSidebarWidth}
+            workspaceRoot={workspaceRoot}
+            activeFilePath={activeFilePath}
+            onOpenFile={openPath}
+            onOpenFolder={openFolder}
+          />
+        )}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {isTauri && tabs.length > 0 && (
+            <TabBar
+              tabs={tabs}
+              activeTabId={activeTabId}
+              onSelectTab={handleSelectTab}
+              onCloseTab={handleCloseTab}
+              onAddTab={handleAddTab}
+            />
+          )}
 
-      {viewMode === "editor" ? (
+          {isRawFile && activeFilePath ? (
+            <RawFileEditor
+              filePath={activeFilePath}
+              kind={activeKind}
+              darkMode={darkMode}
+              sync={fileSync}
+            />
+          ) : viewMode === "editor" ? (
         <>
           {/* Editor header bar */}
           <div
@@ -380,13 +426,15 @@ function App() {
         </>
       )}
 
-      {terminalMounted && (
-        <TerminalPanel
-          visible={showTerminal}
-          cwd={terminalCwd}
-          onClose={() => setShowTerminal(false)}
-        />
-      )}
+          {terminalMounted && (
+            <TerminalPanel
+              visible={showTerminal}
+              cwd={terminalCwd}
+              onClose={() => setShowTerminal(false)}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

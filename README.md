@@ -167,6 +167,28 @@ Built-in fields have their types inferred automatically — you only need `type`
 - `due`, `created`, `done` infer as `date`
 - `tags` infers as `tags`
 
+## Workspace Folders & File Tree
+
+Open a whole folder as a project, shown in a VS Code-style **file-tree sidebar** (`Cmd+B` toggles
+it; drag its right edge to resize). Three ways to open a folder:
+
+- Click **Open Folder** in the sidebar (the folder button in its header, or the big button when no
+  folder is open yet — the sidebar is shown by default).
+- **Drag a folder into the window.**
+- **Drag a folder onto the Dock icon** (packaged app).
+
+Click any file in the tree to open it in a tab:
+
+- **Markdown** (`.md`/`.mdx`) opens in its usual view (task grid, Q&A, or plain WYSIWYG).
+- **Other text files** (code, config, `.txt`, …) open in an editable code editor and autosave just
+  like markdown, with the same conflict-safe disk reconciliation.
+- **Images** (png, jpg, gif, svg, webp, …) render inline; other binaries show a placeholder.
+
+The tree shows everything except noise directories (`.git`, `node_modules`, `.DS_Store`). It's
+**one folder per window** — opening a *different* folder opens a new window (your current tabs stay
+put), and re-opening a folder already open just focuses its window. The last folder is remembered
+and reopened on launch. Requires the desktop app (Tauri).
+
 ## Integrated Terminal
 
 Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the app. The terminal opens in the active file's directory and persists its session when hidden. Requires the desktop app (Tauri).
@@ -207,6 +229,7 @@ prompt.
 | `Cmd+S` | Save (or Save As for untitled) |
 | `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa` and plain markdown files) |
 | `Cmd+P` | Print the QA doc (compact cheatsheet, letter size) |
+| `Cmd+B` | Toggle the workspace file-tree sidebar |
 | `Cmd+1-9` | Switch tabs |
 | `Ctrl+`` `` | Toggle terminal |
 | `Cmd+D` | Split the active terminal pane side-by-side |

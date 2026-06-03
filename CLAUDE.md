@@ -20,16 +20,24 @@ notehub/
 │   │   ├── TabBar.tsx          # Multi-file tabs
 │   │   ├── TerminalPanel.tsx    # Terminal manager: tabs + side-by-side split panes
 │   │   ├── TerminalView.tsx     # A single terminal (one xterm + one PTY session)
-│   │   ├── MarkdownEditor.tsx  # Raw markdown textarea editor
+│   │   ├── MarkdownEditor.tsx  # Raw markdown/code editor (Monaco; `language` prop)
+│   │   ├── Sidebar.tsx         # Collapsible, resizable workspace file-tree panel
+│   │   ├── FileTree.tsx        # Lazy recursive file/folder tree
+│   │   ├── RawFileEditor.tsx   # Non-md files: raw Monaco / inline image / binary placeholder
 │   │   ├── cell-renderers/     # AG Grid display components
 │   │   └── cell-editors/       # AG Grid edit components
 │   ├── hooks/
 │   │   ├── useProjectFile.ts   # File load/parse/save logic
+│   │   ├── useWorkspace.ts     # Workspace folder root + sidebar open/width state
+│   │   ├── useRawFile.ts       # Load/autosave a non-md text file (shared FileSync)
 │   │   └── useFileWatcher.ts   # External change detection
 │   ├── lib/
 │   │   ├── types.ts            # TypeScript interfaces
 │   │   ├── markdown-parser.ts  # YAML frontmatter + table parser
 │   │   ├── qa-parser.ts        # layout: qa marker parser (>>>/<<<)
+│   │   ├── file-kind.ts        # path → FileKind (markdown/raw/image) + Monaco language
+│   │   ├── tree.ts             # sortEntries (dirs first, case-insensitive)
+│   │   ├── tree-refresh.ts     # file-changed → re-read affected tree dirs (subscribeDir bus)
 │   │   ├── milkdown-mermaid.ts # Mermaid SVG node view for Milkdown
 │   │   ├── print.ts            # Render layout: qa to a print cheatsheet HTML
 │   │   └── tauri-api.ts        # Tauri IPC bridge
@@ -59,7 +67,7 @@ notehub/
 | Styling | Tailwind CSS 3.4, `@tailwindcss/typography` |
 | Parsing | gray-matter (YAML frontmatter) |
 | Terminal | portable-pty 0.8 (Rust), @xterm/xterm 5 (frontend) |
-| File Watch | notify 7 (Rust), 500ms debounce |
+| File Watch | notify 7 + notify-debouncer-full 0.4 (Rust), 300ms coalescing (VS Code-style) |
 
 ## Commands
 
@@ -87,18 +95,21 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — pure modules under `src/lib/` and hooks under `src/hooks/`
   have unit tests in adjacent `__tests__/` dirs (`markdown-parser`, `qa-parser`, `print`, `tags`,
-  `types`, `useFileSync`).
+  `types`, `file-kind`, `tree`, `tree-refresh`, `useFileSync`).
 - **Backend (`cargo test`)** — Rust unit tests live in `#[cfg(test)] mod tests` blocks inside each
   source file. The pattern is **"extract a pure helper, then test it"**: logic that used to be
   buried in thread closures or `AppHandle`-bound IO was factored into pure functions so it can be
   tested headlessly (no PTY, no Tauri runtime, no real filesystem watcher):
   - `terminal.rs` → `drain_utf8` (the streaming UTF-8 chunk decoder for PTY output)
-  - `watcher.rs` → `should_skip_path`, `event_kind_label`, `is_debounced` (file-watch filtering +
-    debounce)
-  - `lib.rs` → `reconcile_session` (session-restore reconciliation), plus `is_markdown_file` and
-    `write_atomic` (tested against a `tempfile` temp dir; `tempfile` is a dev-dependency)
-  - `commands.rs` → `print_basename` (PDF filename sanitization), plus the async `read_file` /
-    `write_file` commands round-tripped through a temp dir (`#[tokio::test]`)
+  - `watcher.rs` → `should_skip_path`, `event_kind_label` (file-watch filtering; event
+    coalescing/debounce is now delegated to `notify-debouncer-full`)
+  - `lib.rs` → `reconcile_session` (session-restore reconciliation, incl. dropping a missing
+    `workspace_root`), plus `is_markdown_file` and `write_atomic` (tested against a `tempfile` temp
+    dir; `tempfile` is a dev-dependency)
+  - `commands.rs` → `print_basename` (PDF filename sanitization), `sort_dir_entries`,
+    `is_noise_dir`, `looks_binary`, `find_window_for_workspace`, plus the async `read_file` /
+    `write_file` / `read_dir` / `read_text_file` commands round-tripped through a temp dir
+    (`#[tokio::test]`)
   - `terminal.rs` → the `write` / `resize` / `kill` error paths against an empty `TerminalState`
     (unknown `session_id` → error; `kill` is a no-op `Ok`) — exercised without spawning a real PTY
   When adding backend logic, prefer extracting the testable core into a pure function and add a
@@ -259,7 +270,7 @@ replace still work without it.
 - **Auto-generated IDs**: When a markdown file has no `id` column, the parser auto-assigns sequential IDs (`"001"`, `"002"`, ...) so AG Grid always has unique row keys. These IDs get serialized back on save.
 - **Data flow**: Markdown file → gray-matter parse → AG Grid/Tiptap → serialize back → atomic file write
 - **Atomic writes**: Write to `.tmp` file, then rename (prevents corruption)
-- **File watcher**: Rust `notify` crate watches `.md` files, filters out `.tmp`/`.git`, emits `"file-changed"` events to React via Tauri
+- **File watcher**: Rust `notify` + `notify-debouncer-full` watch a directory recursively, filter out `.tmp` and noise dirs (`.git`/`node_modules`), coalesce event bursts (300ms, never dropping distinct events — VS Code-style), and emit `"file-changed"` events to React via Tauri. All file types are surfaced (not just `.md`) so the workspace tree and non-markdown editors stay in sync
 - **Save debounce**: 300ms debounce on React side
 - **Disk reconciliation** (`src/hooks/useFileSync.ts`): NoteHub is meant to be co-edited with Claude Code writing the same `.md`. Per path it tracks a **baseline** (the exact bytes last read/written = "what's on disk") and a **dirty** flag. The model mirrors VS Code/IntelliJ: disk is the source of truth.
   - **Echo suppression is content-based** (not a timer): on a `file-changed` event, `reconcile` re-reads disk; if it equals the baseline it's our own write → ignored. (The old 1-second `writeLock` was removed — a timer could swallow a concurrent external write that landed within the window.)
@@ -284,6 +295,7 @@ replace still work without it.
   writes it to a temp file and opens it in the default browser to print. The doc `<title>` and
   the temp file's basename are both set to the source `.md` file name (no dir/extension), so
   the browser's "Save as PDF" defaults to a name consistent with the file on disk.
+- `Cmd+B` — Toggle the workspace file-tree sidebar
 - `Cmd+1-9` — Switch tabs
 - `Ctrl+`` `` — Toggle terminal
 - `Cmd+D` — Split the active terminal pane side-by-side (only when terminal focused)
@@ -313,6 +325,59 @@ the tab/split feature is purely frontend.
     pane whose shell exits (`terminal-exit`) auto-closes via `onExit`.
   - `Cmd+D` is handled by a local listener gated on `panelRootRef.contains(activeElement)`
     so it never hijacks Cmd+D from the editor/grid.
+
+## Workspace folders & the file-tree sidebar
+
+NoteHub can open a **folder as a project**: a collapsible left sidebar (`Cmd+B`, shown by default
+for discoverability) shows a file tree, and clicking any file opens it in a tab. **One workspace
+folder per window** — opening a *different* folder spawns a new OS window (VS Code "Open Folder in
+New Window"); re-opening the same folder focuses the window that already owns it. Opening a folder
+never disturbs existing tabs.
+
+Three entry points: the sidebar **Open Folder** button (`openFolderDialog`), **dragging a folder
+into the window** (`useTabManagement` drag-drop splits dirs from files via the `is_directory`
+command, routing dirs to `onOpenFolder`), and **dropping a folder on the Dock icon**
+(`RunEvent::Opened` → emits `open-folder`, which `useWorkspace` listens for). Dock folder drops
+need the `CFBundleDocumentTypes` entry in `src-tauri/Info.plist` (merged into the bundle) and only
+work in a packaged build. The workspace root is watched recursively (`startWatching`) so every
+tree file live-reloads on external edits.
+
+- **Backend (`src-tauri/src/commands.rs`)**:
+  - `read_dir(path)` → `Vec<DirEntryInfo { name, path, is_dir }>`, one level deep (the tree
+    lazy-loads children on expand). Sorted dirs-first/case-insensitive (`sort_dir_entries`);
+    noise dirs (`.git`, `node_modules`, `.DS_Store` via `is_noise_dir`) are hidden. Dotfiles in
+    general are *not* hidden.
+  - `read_text_file(path)` → file text, or `Err("binary")` for non-text files (NUL-byte
+    heuristic, `looks_binary`). Distinct from `read_file` (the markdown editors' path, unchanged).
+  - `open_workspace_window(folder)` spawns a `workspace-{n}` window (or focuses an existing one
+    via `find_window_for_workspace`), recording `label -> canonical(folder)` in
+    `AppState.workspace_windows`. The new window fetches its root via `get_window_workspace`.
+  - `set_workspace_root(path)` records a folder adopted in-place (so dedup works). `save_session`
+    persists `workspaceRoot` in `session.json`; `reconcile_session` drops it if the dir is gone.
+  - **Capabilities** (`capabilities/default.json`) apply to `["main", "workspace-*"]` — spawned
+    windows would otherwise have zero permissions. Inline image preview needs the asset protocol
+    (`tauri.conf.json` `app.security.assetProtocol` + the `protocol-asset` Cargo feature).
+  - The **watcher** (`watcher.rs` `should_skip_path`) now surfaces *all* file types (not just
+    `.md`) so non-markdown editors reload too, still skipping `.tmp` and noise dirs.
+- **Frontend**:
+  - `useWorkspace.ts` owns the window's `workspaceRoot` (from `get_window_workspace`, falling
+    back to the persisted session) plus sidebar open/width (localStorage `nh-sidebar-open` /
+    `nh-sidebar-width`). `openFolder()` adopts the first folder or opens another window.
+  - `Sidebar.tsx` + `FileTree.tsx`: resizable panel (drag handle mirrors `TerminalPanel`'s) and a
+    lazy recursive tree; clicking a file calls `useTabManagement.openPath` (dedupes, focuses).
+  - **Tree auto-refresh** (`tree-refresh.ts`, VS Code model): each loaded directory subscribes by
+    its path to a shared `file-changed` listener and re-reads itself when something is
+    created/deleted/renamed inside it. The Rust watcher uses `notify-debouncer-full` to *coalesce*
+    bursts and emit every distinct event (it never drops events), and the workspace root is
+    canonicalized so realpath events match tree paths — so the tree stays fresh from the watcher
+    alone. A manual **Refresh** button (`refreshAllDirs`) re-reads all loaded dirs on demand.
+  - **File routing by extension** (`file-kind.ts` `fileKindForPath`): `.md/.mdx` → `markdown`
+    (existing grid/qa/plain views); images → `image`; everything else → `raw`. Each `TabInfo`
+    carries its `kind`. In `App.tsx`, raw/image tabs render `RawFileEditor` (the markdown pipeline
+    is gated off with `useProjectFile(isRawFile ? null : activeFilePath, …)`).
+  - `RawFileEditor.tsx`: raw text files open in Monaco (editable, autosaved via `useRawFile` +
+    the shared `FileSync` conflict machinery; language from `languageForPath`); images render
+    inline via `convertFileSrc`; other binaries show an "is binary" placeholder.
 
 ## Development Guidelines
 

@@ -5,11 +5,13 @@ interface MarkdownEditorProps {
   content: string;
   onChange: (content: string) => void;
   darkMode: boolean;
+  /** Monaco language id; defaults to "markdown". Set when editing other text files. */
+  language?: string;
   onUndoExhausted?: () => string | null;
   onRedoExhausted?: () => string | null;
 }
 
-export function MarkdownEditor({ content, onChange, darkMode, onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
+export function MarkdownEditor({ content, onChange, darkMode, language = "markdown", onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialVersionRef = useRef<number>(0);
 
@@ -94,13 +96,29 @@ export function MarkdownEditor({ content, onChange, darkMode, onUndoExhausted, o
         );
       }
     );
+
+    // Bridge Cmd+B (otherwise eaten as "bold") so the sidebar toggle reaches the window handler.
+    editor.addCommand(
+      // eslint-disable-next-line no-bitwise
+      monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB,
+      () => {
+        containerRef.current?.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "b",
+            code: "KeyB",
+            metaKey: true,
+            bubbles: true,
+          })
+        );
+      }
+    );
   };
 
   return (
     <div ref={containerRef} className="flex-1 overflow-hidden">
       <Editor
         height="100%"
-        language="markdown"
+        language={language}
         theme={darkMode ? "vs-dark" : "light"}
         value={content}
         onChange={(value) => onChange(value ?? "")}

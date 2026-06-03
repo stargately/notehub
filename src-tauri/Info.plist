@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Merged into the generated Info.plist. Declares the document types NoteHub accepts
+         from Finder / the Dock icon. Folders open as a workspace (file tree); the markdown
+         entry mirrors the `fileAssociations` in tauri.conf.json so dropping a folder doesn't
+         drop the .md association. -->
+    <key>CFBundleDocumentTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleTypeName</key>
+        <string>Folder</string>
+        <key>CFBundleTypeRole</key>
+        <string>Viewer</string>
+        <key>LSHandlerRank</key>
+        <string>Alternate</string>
+        <key>LSItemContentTypes</key>
+        <array>
+          <string>public.folder</string>
+        </array>
+      </dict>
+      <dict>
+        <key>CFBundleTypeName</key>
+        <string>Markdown Document</string>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>LSHandlerRank</key>
+        <string>Owner</string>
+        <key>CFBundleTypeExtensions</key>
+        <array>
+          <string>md</string>
+          <string>mdx</string>
+        </array>
+      </dict>
+    </array>
+  </dict>
+</plist>

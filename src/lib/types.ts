@@ -63,10 +63,24 @@ export interface FileChangedPayload {
   kind: "created" | "modified" | "deleted";
 }
 
+/**
+ * How a tab's file is rendered. `markdown` routes through the existing grid/qa/plain views;
+ * `raw` opens in the Monaco editor (any text file); `image` renders an inline preview.
+ */
+export type FileKind = "markdown" | "raw" | "image";
+
 export interface TabInfo {
   id: string;
   filePath: string | null;
   label: string;
+  kind: FileKind;
+}
+
+/** One entry in a workspace directory listing (matches the Rust `DirEntryInfo` JSON). */
+export interface DirEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
 }
 
 export type ViewMode = "grid" | "editor";

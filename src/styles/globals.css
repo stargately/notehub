@@ -243,6 +243,11 @@ button, a, input, select, textarea {
   box-shadow: var(--nh-shadow-sm);
 }
 
+/* ─── File-tree sidebar rows ─── */
+.nh-tree-row:hover {
+  background: var(--nh-bg-sunken);
+}
+
 /* ─── Drawer slide-in animation ─── */
 @keyframes slideInRight {
   from { transform: translateX(20px); opacity: 0; }

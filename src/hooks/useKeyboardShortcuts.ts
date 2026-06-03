@@ -16,6 +16,7 @@ interface UseKeyboardShortcutsOptions {
   viewMode?: ViewMode;
   replaceFromRaw?: (raw: string) => boolean;
   flushPendingSnapshot?: () => void;
+  toggleSidebar?: () => void;
 }
 
 export function useKeyboardShortcuts({
@@ -23,7 +24,7 @@ export function useKeyboardShortcuts({
   tabs, setActiveTabId, activeFilePath,
   setShowTerminal, setTerminalMounted,
   undoHistory, activeTabId, viewMode, replaceFromRaw,
-  flushPendingSnapshot,
+  flushPendingSnapshot, toggleSidebar,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -50,6 +51,12 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      // Cmd+B (or Ctrl+B) to toggle the file-tree sidebar
+      if (mod && e.key === "b" && toggleSidebar) {
+        e.preventDefault();
+        toggleSidebar();
+        return;
+      }
       // Cmd+/ (or Ctrl+/) to toggle raw markdown editor
       if (mod && e.key === "/") {
         e.preventDefault();
@@ -85,5 +92,5 @@ export function useKeyboardShortcuts({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [loadFile, handleSave, handleToggleViewMode, tabs, setActiveTabId, activeFilePath, setShowTerminal, setTerminalMounted, undoHistory, activeTabId, viewMode, replaceFromRaw, flushPendingSnapshot]);
+  }, [loadFile, handleSave, handleToggleViewMode, tabs, setActiveTabId, activeFilePath, setShowTerminal, setTerminalMounted, undoHistory, activeTabId, viewMode, replaceFromRaw, flushPendingSnapshot, toggleSidebar]);
 }

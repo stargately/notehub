@@ -1,15 +1,19 @@
 use crate::terminal::TerminalState;
 use crate::{session_file_path, write_atomic, AppState, InitialSession};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use tauri::{AppHandle, State};
+use std::sync::atomic::Ordering;
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Serialize)]
 pub struct InitialSessionPayload {
     pub paths: Vec<String>,
     #[serde(rename = "activeIndex")]
     pub active_index: usize,
+    #[serde(rename = "workspaceRoot")]
+    pub workspace_root: Option<String>,
 }
 
 #[tauri::command]
@@ -22,22 +26,209 @@ pub fn get_project_file_paths(state: State<AppState>) -> Result<InitialSessionPa
     let InitialSession {
         paths,
         active_index,
+        workspace_root,
     } = session;
     Ok(InitialSessionPayload {
         paths,
         active_index,
+        workspace_root,
     })
 }
 
 #[tauri::command]
-pub fn save_session(app: AppHandle, paths: Vec<String>, active_index: usize) -> Result<(), String> {
+pub fn save_session(
+    app: AppHandle,
+    paths: Vec<String>,
+    active_index: usize,
+    workspace_root: Option<String>,
+) -> Result<(), String> {
     let path = session_file_path(&app)?;
     let payload = serde_json::json!({
         "paths": paths,
         "activeIndex": active_index,
+        "workspaceRoot": workspace_root,
     });
     let body = serde_json::to_vec(&payload).map_err(|e| e.to_string())?;
     write_atomic(&path, &body)
+}
+
+/// One entry in a directory listing returned to the file-tree sidebar. `is_dir` is kept in
+/// snake_case so the frontend `DirEntry` type matches the JSON verbatim.
+#[derive(Serialize, Debug)]
+pub struct DirEntryInfo {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+}
+
+/// Directories/files that are almost never useful in a project tree. Hidden from `read_dir`
+/// results by default and reused by the file watcher (`watcher::should_skip_path`) so edits
+/// inside them never trigger reloads. Note dotfiles in general are *not* noise — only this set.
+pub(crate) fn is_noise_dir(name: &str) -> bool {
+    matches!(name, ".git" | "node_modules" | ".DS_Store")
+}
+
+/// Order a directory listing the way an explorer renders it: folders first, then
+/// case-insensitive alphabetical within each group. Pure so it can be unit-tested.
+fn sort_dir_entries(mut entries: Vec<DirEntryInfo>) -> Vec<DirEntryInfo> {
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    entries
+}
+
+/// Heuristic binary-file check: a NUL byte within the first 8 KB (git uses the same trick).
+/// Lets the raw file viewer fall back to an "is binary" branch instead of showing garbage.
+fn looks_binary(sample: &[u8]) -> bool {
+    sample.iter().take(8192).any(|&b| b == 0)
+}
+
+/// Find the label of an already-open window whose workspace root equals `folder` (both should
+/// be canonicalized before calling). Drives "re-opening the same folder focuses its window".
+fn find_window_for_workspace<'a>(
+    open: &'a HashMap<String, String>,
+    folder: &str,
+) -> Option<&'a str> {
+    open.iter()
+        .find(|(_, root)| root.as_str() == folder)
+        .map(|(label, _)| label.as_str())
+}
+
+/// List one level of a directory (the sidebar lazy-loads deeper levels on expand). Uses
+/// `file_type()` rather than `metadata()` so symlinks are reported without being followed.
+#[tauri::command]
+pub async fn read_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
+    let rd = fs::read_dir(&path).map_err(|e| format!("Failed to read dir {}: {}", path, e))?;
+    let mut entries = Vec::new();
+    for entry in rd {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if is_noise_dir(&name) {
+            continue;
+        }
+        let is_dir = entry.file_type().map_err(|e| e.to_string())?.is_dir();
+        entries.push(DirEntryInfo {
+            name,
+            path: entry.path().to_string_lossy().to_string(),
+            is_dir,
+        });
+    }
+    Ok(sort_dir_entries(entries))
+}
+
+/// Read a file as UTF-8 text, returning `Err("binary")` for non-text files so the frontend
+/// can render an "is binary" placeholder. Distinct from `read_file` (used by the markdown
+/// editors), which is intentionally left unchanged.
+#[tauri::command]
+pub async fn read_text_file(path: String) -> Result<String, String> {
+    let bytes = fs::read(&path).map_err(|e| format!("Failed to read {}: {}", path, e))?;
+    if looks_binary(&bytes) {
+        return Err("binary".to_string());
+    }
+    String::from_utf8(bytes).map_err(|_| "binary".to_string())
+}
+
+/// Whether `path` points at a directory — lets the frontend route a dropped path to the
+/// workspace tree (folder) versus a tab (file).
+#[tauri::command]
+pub fn is_directory(path: String) -> bool {
+    Path::new(&path).is_dir()
+}
+
+/// Resolve a path to its canonical form (symlinks/`.`/`..` removed). The workspace root is
+/// canonicalized so tree paths match the realpaths the OS watcher reports (e.g. macOS
+/// surfaces `/tmp/x` as `/private/tmp/x`), like VS Code normalizes watcher paths.
+#[tauri::command]
+pub fn canonicalize(path: String) -> Result<String, String> {
+    fs::canonicalize(&path)
+        .map(|p| p.to_string_lossy().to_string())
+        .map_err(|e| format!("Failed to canonicalize {}: {}", path, e))
+}
+
+/// Open `folder` as a workspace. If a window already owns that folder, focus it; otherwise
+/// spawn a fresh window and remember its `label -> canonical(folder)` mapping so the new
+/// window can fetch its root via `get_window_workspace` and future dedup works.
+#[tauri::command]
+pub async fn open_workspace_window(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder: String,
+) -> Result<(), String> {
+    let canonical = fs::canonicalize(&folder)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or(folder);
+
+    // Same folder already open → focus that window instead of duplicating it.
+    {
+        let map = state.workspace_windows.lock().map_err(|e| e.to_string())?;
+        if let Some(label) = find_window_for_workspace(&map, &canonical) {
+            if let Some(win) = app.get_webview_window(label) {
+                let _ = win.set_focus();
+                return Ok(());
+            }
+        }
+    }
+
+    let id = state.window_counter.fetch_add(1, Ordering::SeqCst);
+    let label = format!("workspace-{}", id);
+    state
+        .workspace_windows
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(label.clone(), canonical);
+
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .title("NoteHub")
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(800.0, 500.0)
+        .build()
+        .map_err(|e| format!("Failed to open window: {}", e))?;
+
+    Ok(())
+}
+
+/// Return the workspace root this window was opened for (set by `open_workspace_window` or
+/// `set_workspace_root`). `None` for a window that has no workspace yet.
+#[tauri::command]
+pub fn get_window_workspace(
+    window: tauri::WebviewWindow,
+    state: State<AppState>,
+) -> Result<Option<String>, String> {
+    let label = window.label().to_string();
+    Ok(state
+        .workspace_windows
+        .lock()
+        .map_err(|e| e.to_string())?
+        .get(&label)
+        .cloned())
+}
+
+/// Record (or clear, with `None`) the workspace root the calling window has adopted. Keeps the
+/// live `label -> root` map in sync so same-folder dedup works for folders opened in-place
+/// (e.g. the first folder opened in a fresh window). Persistence across restarts is handled
+/// separately by `save_session`.
+#[tauri::command]
+pub fn set_workspace_root(
+    window: tauri::WebviewWindow,
+    state: State<AppState>,
+    path: Option<String>,
+) -> Result<(), String> {
+    let label = window.label().to_string();
+    let mut map = state.workspace_windows.lock().map_err(|e| e.to_string())?;
+    match path {
+        Some(p) => {
+            let canonical = fs::canonicalize(&p)
+                .map(|x| x.to_string_lossy().to_string())
+                .unwrap_or(p);
+            map.insert(label, canonical);
+        }
+        None => {
+            map.remove(&label);
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -161,7 +352,11 @@ pub fn kill_terminal(state: State<TerminalState>, session_id: u32) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::{print_basename, read_file, write_file};
+    use super::{
+        find_window_for_workspace, is_noise_dir, looks_binary, print_basename, read_dir, read_file,
+        read_text_file, sort_dir_entries, write_file, DirEntryInfo,
+    };
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn write_then_read_round_trips() {
@@ -223,5 +418,124 @@ mod tests {
     #[test]
     fn preserves_unicode_alphanumerics() {
         assert_eq!(print_basename(Some("日本語".into())), "日本語");
+    }
+
+    fn entry(name: &str, is_dir: bool) -> DirEntryInfo {
+        DirEntryInfo {
+            name: name.into(),
+            path: format!("/root/{name}"),
+            is_dir,
+        }
+    }
+
+    #[test]
+    fn sort_puts_dirs_before_files() {
+        let sorted = sort_dir_entries(vec![
+            entry("zebra.md", false),
+            entry("src", true),
+            entry("apple.md", false),
+            entry("docs", true),
+        ]);
+        let names: Vec<_> = sorted.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["docs", "src", "apple.md", "zebra.md"]);
+    }
+
+    #[test]
+    fn sort_is_case_insensitive_within_a_group() {
+        let sorted = sort_dir_entries(vec![
+            entry("Banana.md", false),
+            entry("apple.md", false),
+            entry("Cherry.md", false),
+        ]);
+        let names: Vec<_> = sorted.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["apple.md", "Banana.md", "Cherry.md"]);
+    }
+
+    #[test]
+    fn sort_is_stable_on_empty_input() {
+        assert!(sort_dir_entries(vec![]).is_empty());
+    }
+
+    #[test]
+    fn noise_dirs_are_recognized() {
+        assert!(is_noise_dir(".git"));
+        assert!(is_noise_dir("node_modules"));
+        assert!(is_noise_dir(".DS_Store"));
+        assert!(!is_noise_dir("src"));
+        assert!(!is_noise_dir(".github")); // dotfiles in general are not noise
+        assert!(!is_noise_dir("notes.md"));
+    }
+
+    #[test]
+    fn looks_binary_detects_nul_bytes() {
+        assert!(!looks_binary(b"plain text"));
+        assert!(!looks_binary(b""));
+        assert!(looks_binary(b"text\0with nul"));
+        // A NUL beyond the 8 KB sample window is not inspected.
+        let mut late = vec![b'a'; 9000];
+        late.push(0);
+        assert!(!looks_binary(&late));
+    }
+
+    #[test]
+    fn find_window_matches_canonical_root() {
+        let mut map = HashMap::new();
+        map.insert("workspace-1".to_string(), "/home/me/proj".to_string());
+        map.insert("main".to_string(), "/home/me/other".to_string());
+        assert_eq!(
+            find_window_for_workspace(&map, "/home/me/proj"),
+            Some("workspace-1")
+        );
+        assert_eq!(find_window_for_workspace(&map, "/home/me/missing"), None);
+    }
+
+    #[tokio::test]
+    async fn read_dir_lists_sorted_and_hides_noise() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("src")).unwrap();
+        std::fs::create_dir(dir.path().join(".git")).unwrap();
+        std::fs::write(dir.path().join("zeta.md"), b"z").unwrap();
+        std::fs::write(dir.path().join("alpha.txt"), b"a").unwrap();
+
+        let entries = read_dir(dir.path().to_str().unwrap().to_string())
+            .await
+            .unwrap();
+        let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
+        // .git hidden; dir first; then files alphabetically.
+        assert_eq!(names, vec!["src", "alpha.txt", "zeta.md"]);
+        assert!(entries[0].is_dir);
+        assert!(!entries[1].is_dir);
+    }
+
+    #[tokio::test]
+    async fn read_dir_errors_on_missing_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nope");
+        let err = read_dir(missing.to_str().unwrap().to_string())
+            .await
+            .unwrap_err();
+        assert!(err.contains("Failed to read dir"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn read_text_file_reads_text_and_rejects_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let text = dir.path().join("note.txt");
+        std::fs::write(&text, b"hello world").unwrap();
+        assert_eq!(
+            read_text_file(text.to_str().unwrap().to_string())
+                .await
+                .unwrap(),
+            "hello world"
+        );
+
+        let bin = dir.path().join("blob.bin");
+        std::fs::write(&bin, [0u8, 1, 2, 3]).unwrap();
+        assert_eq!(
+            read_text_file(bin.to_str().unwrap().to_string())
+                .await
+                .unwrap_err(),
+            "binary"
+        );
     }
 }

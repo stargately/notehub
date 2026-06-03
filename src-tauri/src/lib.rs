@@ -4,9 +4,11 @@ pub mod terminal;
 mod watcher;
 
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -14,10 +16,16 @@ use tauri::{AppHandle, Emitter, Manager};
 pub struct InitialSession {
     pub paths: Vec<String>,
     pub active_index: usize,
+    pub workspace_root: Option<String>,
 }
 
 pub struct AppState {
     pub initial_session: Mutex<InitialSession>,
+    /// Monotonic counter for unique spawned-window labels (`workspace-{n}`).
+    pub window_counter: AtomicUsize,
+    /// Live `window label -> canonical workspace root` map. Lets a spawned window fetch its
+    /// folder and powers "re-opening the same folder focuses its window".
+    pub workspace_windows: Mutex<HashMap<String, String>>,
 }
 
 #[derive(Deserialize)]
@@ -25,6 +33,8 @@ struct PersistedSession {
     paths: Vec<String>,
     #[serde(rename = "activeIndex", default)]
     active_index: usize,
+    #[serde(rename = "workspaceRoot", default)]
+    workspace_root: Option<String>,
 }
 
 fn is_markdown_file(p: &str) -> bool {
@@ -58,7 +68,11 @@ pub fn write_atomic(target: &Path, contents: &[u8]) -> Result<(), String> {
 /// Reconcile a persisted session JSON body against reality: parse it, drop any path that no
 /// longer satisfies `exists`, and clamp `active_index` into the surviving range. Pure (the
 /// `exists` predicate is injected) so it can be unit-tested without disk or an `AppHandle`.
-fn reconcile_session(body: &str, exists: impl Fn(&str) -> bool) -> InitialSession {
+fn reconcile_session(
+    body: &str,
+    exists: impl Fn(&str) -> bool,
+    dir_exists: impl Fn(&str) -> bool,
+) -> InitialSession {
     let persisted: PersistedSession = match serde_json::from_str(body) {
         Ok(p) => p,
         Err(_) => return InitialSession::default(),
@@ -69,9 +83,12 @@ fn reconcile_session(body: &str, exists: impl Fn(&str) -> bool) -> InitialSessio
     } else {
         persisted.active_index.min(paths.len() - 1)
     };
+    // Drop a remembered workspace root that no longer points at an existing directory.
+    let workspace_root = persisted.workspace_root.filter(|r| dir_exists(r));
     InitialSession {
         paths,
         active_index,
+        workspace_root,
     }
 }
 
@@ -84,7 +101,7 @@ fn load_persisted_session(app: &AppHandle) -> InitialSession {
         Ok(b) => b,
         Err(_) => return InitialSession::default(),
     };
-    reconcile_session(&body, is_markdown_file)
+    reconcile_session(&body, is_markdown_file, |p| Path::new(p).is_dir())
 }
 
 pub fn run() {
@@ -118,7 +135,10 @@ pub fn run() {
             initial_session: Mutex::new(InitialSession {
                 paths: cli_paths,
                 active_index: 0,
+                workspace_root: None,
             }),
+            window_counter: AtomicUsize::new(1),
+            workspace_windows: Mutex::new(HashMap::new()),
         })
         .manage(terminal::TerminalState::new())
         .invoke_handler(tauri::generate_handler![
@@ -127,6 +147,13 @@ pub fn run() {
             commands::note_recent_document,
             commands::read_file,
             commands::write_file,
+            commands::read_dir,
+            commands::read_text_file,
+            commands::is_directory,
+            commands::canonicalize,
+            commands::open_workspace_window,
+            commands::get_window_workspace,
+            commands::set_workspace_root,
             commands::print_html,
             commands::start_watching,
             commands::stop_watching,
@@ -140,9 +167,18 @@ pub fn run() {
             // If launched without CLI file args, fall back to the persisted session.
             if !initial_from_cli {
                 let restored = load_persisted_session(app.handle());
-                if !restored.paths.is_empty() {
+                if !restored.paths.is_empty() || restored.workspace_root.is_some() {
                     *state.initial_session.lock().unwrap() = restored;
                 }
+            }
+            // Register the main window's restored workspace root so re-opening the same folder
+            // focuses this window instead of spawning a duplicate.
+            if let Some(root) = state.initial_session.lock().unwrap().workspace_root.clone() {
+                state
+                    .workspace_windows
+                    .lock()
+                    .unwrap()
+                    .insert("main".to_string(), root);
             }
             let paths = state.initial_session.lock().unwrap().paths.clone();
             // Register initial files in macOS' Recent Documents (Dock submenu)
@@ -172,17 +208,30 @@ pub fn run() {
 
     app.run(|app_handle, event| {
         if let tauri::RunEvent::Opened { urls } = event {
-            let paths: Vec<String> = urls
+            // Files opened via Finder / dropped on the Dock icon. Directories open as a
+            // workspace (file tree); markdown files open as tabs.
+            let resolved: Vec<PathBuf> = urls
                 .iter()
                 .filter_map(|url| url.to_file_path().ok())
+                .collect();
+            let folders: Vec<String> = resolved
+                .iter()
+                .filter(|p| p.is_dir())
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            let files: Vec<String> = resolved
+                .iter()
                 .filter(|p| p.extension().is_some_and(|e| e == "md" || e == "mdx"))
                 .map(|p| p.to_string_lossy().to_string())
                 .collect();
-            if !paths.is_empty() {
-                for p in &paths {
+            if !files.is_empty() {
+                for p in &files {
                     recent_docs::note(app_handle, p.clone());
                 }
-                let _ = app_handle.emit("open-files", &paths);
+                let _ = app_handle.emit("open-files", &files);
+            }
+            for folder in folders {
+                let _ = app_handle.emit("open-folder", folder);
             }
         }
     });
@@ -242,7 +291,7 @@ mod tests {
 
     #[test]
     fn reconcile_session_defaults_on_garbage_json() {
-        let session = reconcile_session("not json at all", |_| true);
+        let session = reconcile_session("not json at all", |_| true, |_| true);
         assert!(session.paths.is_empty());
         assert_eq!(session.active_index, 0);
     }
@@ -250,7 +299,7 @@ mod tests {
     #[test]
     fn reconcile_session_keeps_all_paths_when_all_exist() {
         let body = r#"{"paths":["a.md","b.md","c.md"],"activeIndex":1}"#;
-        let session = reconcile_session(body, |_| true);
+        let session = reconcile_session(body, |_| true, |_| true);
         assert_eq!(session.paths, vec!["a.md", "b.md", "c.md"]);
         assert_eq!(session.active_index, 1);
     }
@@ -258,21 +307,21 @@ mod tests {
     #[test]
     fn reconcile_session_drops_missing_paths() {
         let body = r#"{"paths":["keep.md","gone.md","keep2.md"],"activeIndex":0}"#;
-        let session = reconcile_session(body, |p| p != "gone.md");
+        let session = reconcile_session(body, |p| p != "gone.md", |_| true);
         assert_eq!(session.paths, vec!["keep.md", "keep2.md"]);
     }
 
     #[test]
     fn reconcile_session_clamps_active_index_into_range() {
         let body = r#"{"paths":["a.md","b.md"],"activeIndex":9}"#;
-        let session = reconcile_session(body, |_| true);
+        let session = reconcile_session(body, |_| true, |_| true);
         assert_eq!(session.active_index, 1);
     }
 
     #[test]
     fn reconcile_session_resets_index_when_no_paths_survive() {
         let body = r#"{"paths":["a.md","b.md"],"activeIndex":1}"#;
-        let session = reconcile_session(body, |_| false);
+        let session = reconcile_session(body, |_| false, |_| true);
         assert!(session.paths.is_empty());
         assert_eq!(session.active_index, 0);
     }
@@ -281,7 +330,28 @@ mod tests {
     fn reconcile_session_defaults_active_index_when_absent() {
         // `activeIndex` omitted — serde default of 0 applies.
         let body = r#"{"paths":["a.md"]}"#;
-        let session = reconcile_session(body, |_| true);
+        let session = reconcile_session(body, |_| true, |_| true);
         assert_eq!(session.active_index, 0);
+    }
+
+    #[test]
+    fn reconcile_session_keeps_workspace_root_when_dir_exists() {
+        let body = r#"{"paths":[],"activeIndex":0,"workspaceRoot":"/home/me/proj"}"#;
+        let session = reconcile_session(body, |_| true, |_| true);
+        assert_eq!(session.workspace_root.as_deref(), Some("/home/me/proj"));
+    }
+
+    #[test]
+    fn reconcile_session_drops_workspace_root_when_dir_missing() {
+        let body = r#"{"paths":[],"activeIndex":0,"workspaceRoot":"/home/me/gone"}"#;
+        let session = reconcile_session(body, |_| true, |_| false);
+        assert_eq!(session.workspace_root, None);
+    }
+
+    #[test]
+    fn reconcile_session_workspace_root_absent_is_none() {
+        let body = r#"{"paths":["a.md"],"activeIndex":0}"#;
+        let session = reconcile_session(body, |_| true, |_| true);
+        assert_eq!(session.workspace_root, None);
     }
 }
