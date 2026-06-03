@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MarkdownWysiwyg } from "./MarkdownWysiwyg";
+import { QaFindBar } from "./QaFindBar";
 import { ThemeIcon } from "./ThemeIcon";
 import type { ThemeMode } from "../hooks/useDarkMode";
 import { printQaDocument } from "../lib/print";
@@ -9,6 +10,15 @@ import {
   assembleQa,
   type QaDocument,
 } from "../lib/qa-parser";
+import {
+  collectMatches,
+  paintHighlights,
+  clearHighlights,
+  scrollToMatch,
+  replaceNthOccurrence,
+  replaceAllOccurrences,
+  type QaMatch,
+} from "../lib/qa-find";
 
 interface QaLayoutProps {
   /** Full raw file content (frontmatter + body). */
@@ -56,18 +66,122 @@ export function QaLayout({
   // the actual file name (consistent with the .md on disk) over the YAML project name.
   printRef.current = () => void printQaDocument(content, fileName || projectName || "Untitled");
 
-  // Cmd/Ctrl+P renders the doc to a standalone cheatsheet and opens it for printing
-  // (WKWebView can't print the live view, so we never call window.print() on it directly).
+  // ─── Find & replace state ───
+  // Find/highlight runs over the rendered DOM (CSS Highlight API); replace runs over
+  // the markdown source strings in `parsed.doc`. See src/lib/qa-find.ts.
+  const [findOpen, setFindOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [matchCount, setMatchCount] = useState(0);
+  const docRef = useRef<HTMLDivElement>(null);
+  const matchesRef = useRef<QaMatch[]>([]);
+  const activeIndexRef = useRef(0);
+  activeIndexRef.current = activeIndex;
+
+  const closeFind = () => {
+    setFindOpen(false);
+    clearHighlights();
+  };
+
+  // Cmd/Ctrl+P prints; Cmd/Ctrl+F opens the find bar (and suppresses the WKWebView
+  // native find, which doesn't work in the embedded webview anyway).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P")) {
         e.preventDefault();
         printRef.current();
+      } else if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        setFindOpen(true);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Recompute matches when the query/case/open-state changes, and after the editors
+  // remount (mountKey bumps on external change *and* on our own replace commits). The
+  // rAF lets the remounted Crepe DOM lay out before we walk it.
+  useEffect(() => {
+    if (!findOpen) return;
+    let raf = 0;
+    raf = requestAnimationFrame(() => {
+      const container = docRef.current;
+      const matches = container && query ? collectMatches(container, query, { caseSensitive }) : [];
+      matchesRef.current = matches;
+      setMatchCount(matches.length);
+      const clamped = matches.length ? Math.min(activeIndexRef.current, matches.length - 1) : 0;
+      setActiveIndex(clamped);
+      paintHighlights(matches, clamped);
+      if (matches[clamped]) scrollToMatch(matches[clamped]);
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findOpen, query, caseSensitive, mountKey]);
+
+  useEffect(() => () => clearHighlights(), []);
+
+  const gotoMatch = (next: number) => {
+    const matches = matchesRef.current;
+    if (!matches.length) return;
+    const wrapped = (next + matches.length) % matches.length;
+    setActiveIndex(wrapped);
+    paintHighlights(matches, wrapped);
+    scrollToMatch(matches[wrapped]);
+  };
+
+  // Apply a string transform to one field ("header" | "block-<i>-left|right") and
+  // return the new ParsedState, or null if the field is unknown or unchanged.
+  const applyFieldReplace = (
+    state: ParsedState,
+    field: string,
+    fn: (value: string) => string,
+  ): ParsedState | null => {
+    if (field === "header") {
+      const header = fn(state.doc.header);
+      if (header === state.doc.header) return null;
+      return { ...state, doc: { ...state.doc, header } };
+    }
+    const m = field.match(/^block-(\d+)-(left|right)$/);
+    if (!m) return null;
+    const i = Number(m[1]);
+    const side = m[2] as "left" | "right";
+    const block = state.doc.blocks[i];
+    if (!block) return null;
+    const replaced = fn(block[side]);
+    if (replaced === block[side]) return null;
+    const blocks = state.doc.blocks.map((b, idx) => (idx === i ? { ...b, [side]: replaced } : b));
+    return { ...state, doc: { ...state.doc, blocks } };
+  };
+
+  // Programmatic edits (replace) must remount the mount-once editors so the new text
+  // renders — commit() alone only updates React state for serialization, not the live
+  // Crepe DOM (normal typing updates the DOM itself, so it never bumps mountKey).
+  const commitRemount = (next: ParsedState) => {
+    commit(next);
+    setMountKey((k) => k + 1);
+  };
+
+  const replaceCurrent = () => {
+    const match = matchesRef.current[activeIndexRef.current];
+    if (!match) return;
+    const next = applyFieldReplace(parsedRef.current, match.field, (value) =>
+      replaceNthOccurrence(value, query, replaceText, match.indexInField, caseSensitive));
+    if (next) commitRemount(next);
+  };
+
+  const replaceAll = () => {
+    if (!query) return;
+    const cur = parsedRef.current;
+    const header = replaceAllOccurrences(cur.doc.header, query, replaceText, caseSensitive);
+    const blocks = cur.doc.blocks.map((b) => ({
+      left: replaceAllOccurrences(b.left, query, replaceText, caseSensitive),
+      right: replaceAllOccurrences(b.right, query, replaceText, caseSensitive),
+    }));
+    commitRemount({ ...cur, doc: { header, blocks } });
+  };
 
   // External content changes (reload, Monaco edit, tab switch) → re-parse + remount.
   useEffect(() => {
@@ -105,7 +219,24 @@ export function QaLayout({
   const themeKey = `${mountKey}-${darkMode ? "d" : "l"}`;
 
   return (
-    <div className="nh-qa-layout flex-1 flex flex-col overflow-hidden">
+    <div className="nh-qa-layout relative flex-1 flex flex-col overflow-hidden">
+      {findOpen && (
+        <QaFindBar
+          query={query}
+          replace={replaceText}
+          caseSensitive={caseSensitive}
+          matchCount={matchCount}
+          activeIndex={activeIndex}
+          onQueryChange={setQuery}
+          onReplaceChange={setReplaceText}
+          onToggleCase={() => setCaseSensitive((v) => !v)}
+          onNext={() => gotoMatch(activeIndexRef.current + 1)}
+          onPrev={() => gotoMatch(activeIndexRef.current - 1)}
+          onReplaceCurrent={replaceCurrent}
+          onReplaceAll={replaceAll}
+          onClose={closeFind}
+        />
+      )}
       {/* Header bar (mirrors the Monaco editor header) */}
       <div
         className="nh-qa-topbar flex flex-wrap items-center gap-2 px-4 py-2 border-b"
@@ -121,7 +252,7 @@ export function QaLayout({
           Q&amp;A
         </span>
         <span className="text-[10px]" style={{ color: "var(--nh-text-tertiary)" }}>
-          {isMac ? "Cmd" : "Ctrl"}+/ to edit raw · {isMac ? "Cmd" : "Ctrl"}+P to print
+          {isMac ? "Cmd" : "Ctrl"}+/ to edit raw · {isMac ? "Cmd" : "Ctrl"}+F to find · {isMac ? "Cmd" : "Ctrl"}+P to print
         </span>
         <div className="flex-1" />
         <button onClick={() => printRef.current()} className="nh-btn" title="Print (cheatsheet, letter size)">
@@ -141,16 +272,16 @@ export function QaLayout({
         </button>
       </div>
 
-      <div className="nh-qa-doc flex-1 overflow-y-auto">
+      <div ref={docRef} className="nh-qa-doc flex-1 overflow-y-auto">
         {doc.header && (
-          <div className="nh-qa-header">
+          <div className="nh-qa-header" data-qa-field="header">
             <MarkdownWysiwyg key={`h-${themeKey}`} value={doc.header} onChange={updateHeader} darkMode={darkMode} placeholder="Write here…" />
           </div>
         )}
 
         {doc.blocks.map((block, i) => (
           <div key={`b-${i}-${themeKey}`} className="nh-qa-row">
-            <div className="nh-qa-col nh-qa-col-left">
+            <div className="nh-qa-col nh-qa-col-left" data-qa-field={`block-${i}-left`}>
               <MarkdownWysiwyg
                 key={`l-${i}-${themeKey}`}
                 value={block.left}
@@ -159,7 +290,7 @@ export function QaLayout({
                 placeholder="Question…"
               />
             </div>
-            <div className="nh-qa-col nh-qa-col-right">
+            <div className="nh-qa-col nh-qa-col-right" data-qa-field={`block-${i}-right`}>
               <MarkdownWysiwyg
                 key={`r-${i}-${themeKey}`}
                 value={block.right}

@@ -269,6 +269,94 @@ button, a, input, select, textarea {
   padding: 8px 0 64px;
 }
 
+/* ─── QA find & replace ─── */
+/* Painted by the CSS Custom Highlight API (src/lib/qa-find.ts) — no DOM mutation. */
+::highlight(nh-find) {
+  background: var(--nh-accent-subtle);
+  color: inherit;
+}
+::highlight(nh-find-active) {
+  background: var(--nh-accent);
+  color: #fff;
+}
+
+.nh-qa-find {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--nh-border);
+  border-radius: 8px;
+  background: var(--nh-bg-elevated);
+  box-shadow: var(--nh-shadow-sm);
+}
+
+.nh-qa-find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nh-qa-find-input {
+  width: 180px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--nh-border);
+  border-radius: 4px;
+  background: var(--nh-bg);
+  color: var(--nh-text);
+  outline: none;
+}
+.nh-qa-find-input:focus {
+  border-color: var(--nh-accent);
+}
+
+.nh-qa-find-count {
+  min-width: 38px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--nh-text-tertiary);
+}
+
+.nh-qa-find-icon,
+.nh-qa-find-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--nh-text-secondary);
+  cursor: pointer;
+}
+.nh-qa-find-icon:hover:not(:disabled),
+.nh-qa-find-toggle:hover {
+  background: var(--nh-bg-sunken);
+  color: var(--nh-text);
+}
+.nh-qa-find-icon:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.nh-qa-find-icon.active,
+.nh-qa-find-toggle.active {
+  background: var(--nh-accent-subtle);
+  border-color: var(--nh-accent);
+  color: var(--nh-accent);
+}
+.nh-qa-find-text {
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .nh-qa-header {
   max-width: 920px;
   margin: 0 auto;

@@ -170,6 +170,18 @@ round-trip through `serializeProjectMd`, so the task-format serializer can't pol
 the frontmatter or drop the document body. Edits are written directly to disk via the
 same debounced `writeFile` path used by the Monaco editor (`useViewMode.handleEditorChange`).
 
+**Find & replace** (`Cmd+F`): `src/lib/qa-find.ts` + `src/components/QaFindBar.tsx`, hosted
+by `QaLayout`. Because the view is many independent mount-once Milkdown editors, find runs
+in two representations: **find/highlight operates on the rendered DOM** via the CSS Custom
+Highlight API (`CSS.highlights` + `Range` — zero DOM mutation, safe with ProseMirror), while
+**replace operates on the markdown source strings** in `QaLayout`'s parsed state. Each editor
+region carries a `data-qa-field` attribute (`header` | `block-<i>-left` | `block-<i>-right`) so
+a DOM match maps back to its source field; replace edits that field and bumps `mountKey` to
+remount the affected editor (commit alone wouldn't refresh the mount-once Crepe DOM). For plain
+prose the two representations align 1:1; a query overlapping markdown syntax (e.g. inside
+`**bold**`) can diverge in count. Highlighting needs WKWebView/Safari 17.2+; navigation and
+replace still work without it.
+
 ## Architecture Notes
 
 - **Auto-generated IDs**: When a markdown file has no `id` column, the parser auto-assigns sequential IDs (`"001"`, `"002"`, ...) so AG Grid always has unique row keys. These IDs get serialized back on save.
@@ -192,6 +204,8 @@ same debounced `writeFile` path used by the Monaco editor (`useViewMode.handleEd
 - `Cmd+N` — New task
 - `Cmd+S` — Save (Save As for untitled)
 - `Cmd+/` — Toggle raw markdown editor (formatted WYSIWYG ↔ raw for `layout: qa`)
+- `Cmd+F` — In the task view, focus the filter (Toolbar). In the `layout: qa` view, open the
+  Find & replace bar (whole-document search; `Enter`/`Shift+Enter` navigate, `Esc` closes).
 - `Cmd+P` — Print the `layout: qa` doc (compact cheatsheet, letter size, two columns + diagrams).
   WKWebView has no working `window.print()`, so `src/lib/print.ts` renders the markdown to a
   self-contained HTML (via `marked` + light-theme mermaid) and the Rust `print_html` command

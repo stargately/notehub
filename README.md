@@ -94,6 +94,9 @@ edit the raw fence via the raw editor. Tables render inline too.
 - A file with no markers is just one full-width editor.
 
 Press `Cmd+/` to switch between the formatted editor and the raw markdown code editor.
+Press `Cmd+F` to open the find & replace bar — it searches the whole document (header
+plus every question/answer column), highlights matches, navigates with `Enter` /
+`Shift+Enter`, and can replace the current match or all of them. `Esc` closes it.
 Press `Cmd+P` (or the **Print** button) to print the document as a compact, cheatsheet-style
 handout on letter-size pages — the two-column layout and mermaid diagrams are preserved. When
 you "Save as PDF", the default file name matches the source markdown file.
@@ -154,7 +157,7 @@ prompt.
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+N` | New task |
-| `Cmd+F` | Focus filter |
+| `Cmd+F` | Focus filter (task view) · Find & replace (`layout: qa` view) |
 | `Cmd+R` | Reload file |
 | `Cmd+S` | Save (or Save As for untitled) |
 | `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa`) |
