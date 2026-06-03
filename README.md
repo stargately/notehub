@@ -11,9 +11,23 @@ npm run dev:tauri     # Full desktop app
 npm run build:tauri   # Build native installer
 ```
 
-## Markdown File Format
+## Document Layouts
 
-Each `.md` project file has three sections:
+The `layout` field in a file's frontmatter chooses the view:
+
+| `layout` | View |
+|----------|------|
+| `todo` | The AG Grid **task table** (see *Task Layout* below). |
+| `qa` | A two-column **Q&A document** (see *Q&A Layout* below). |
+| _omitted / other_ | A **plain markdown** document — one formatted WYSIWYG editor, `Cmd+/` for raw. |
+
+> **Heads up:** the task table now requires `layout: todo`. A file without it (even one with a
+> `## Tasks` table) opens as a plain markdown document — add `layout: todo` to get the grid back.
+> Your content is never lost either way.
+
+## Task Layout (`layout: todo`)
+
+A task-table file sets `layout: todo` and has three sections:
 
 ### 1. YAML Frontmatter (configuration)
 
@@ -21,6 +35,7 @@ Each `.md` project file has three sections:
 ---
 project: "My Project"
 created: "2025-09-22"
+layout: todo
 columns:
   - field: title
     width: 400
@@ -101,6 +116,14 @@ Press `Cmd+P` (or the **Print** button) to print the document as a compact, chea
 handout on letter-size pages — the two-column layout and mermaid diagrams are preserved. When
 you "Save as PDF", the default file name matches the source markdown file.
 
+## Plain Markdown
+
+Open any ordinary `.md` file — one with **no `layout` field** — and NoteHub shows it as a single
+**full-width WYSIWYG editor** (the same Typora-style editor used by the Q&A layout). Mermaid
+diagrams and tables render inline, and `Cmd+/` toggles to the raw markdown code editor. Edits are
+auto-saved to the file; the frontmatter (if any) is preserved verbatim. This makes NoteHub a
+comfortable editor for notes, READMEs, and docs — not just task lists.
+
 ## Custom Fields
 
 Any field added to `columns` in frontmatter automatically appears as a column. By default, custom fields render as plain text. Use the `type` property to get richer rendering:
@@ -167,10 +190,10 @@ prompt.
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+N` | New task |
-| `Cmd+F` | Focus filter (task view) · Find & replace (`layout: qa` view) |
+| `Cmd+F` | Focus filter (task view) · Find & replace (`layout: qa` / plain markdown view) |
 | `Cmd+R` | Reload file |
 | `Cmd+S` | Save (or Save As for untitled) |
-| `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa`) |
+| `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa` and plain markdown files) |
 | `Cmd+P` | Print the QA doc (compact cheatsheet, letter size) |
 | `Cmd+1-9` | Switch tabs |
 | `Ctrl+`` `` | Toggle terminal |

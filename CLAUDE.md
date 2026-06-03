@@ -14,7 +14,7 @@ notehub/
 │   │   ├── TaskTable.tsx       # AG Grid task table
 │   │   ├── TaskDetailDrawer.tsx # Side drawer with Tiptap editor
 │   │   ├── ProjectNotes.tsx    # Project notes (Tiptap)
-│   │   ├── QaLayout.tsx        # Two-column Q&A view (layout: qa)
+│   │   ├── QaLayout.tsx        # Two-column Q&A view (layout: qa) + plain markdown editor (no layout)
 │   │   ├── MarkdownWysiwyg.tsx # Milkdown Crepe WYSIWYG editor wrapper
 │   │   ├── Toolbar.tsx         # Filters, toggles, new task
 │   │   ├── TabBar.tsx          # Multi-file tabs
@@ -53,7 +53,7 @@ notehub/
 | Frontend | React 18, TypeScript 5.6, Vite 6 |
 | Data Grid | AG Grid Community 33 |
 | Rich Text | Tiptap 2.11 (StarterKit, Placeholder, TaskList) |
-| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa`) |
+| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa` and plain markdown files) |
 | Diagrams | Mermaid 10 via `@milkdown/plugin-diagram` (custom node view) |
 | Code Editor | Monaco (`@monaco-editor/react`) for raw markdown |
 | Styling | Tailwind CSS 3.4, `@tailwindcss/typography` |
@@ -77,9 +77,31 @@ npm run kill          # Kill port 1420
 - **1420** — Vite dev server (strict)
 - **1421** — HMR websocket (Tauri mode only)
 
-## Markdown File Format
+## Document layouts — the `layout` frontmatter routes the view
 
-Each `.md` file has three sections:
+The `layout` field in a file's YAML frontmatter decides which view NoteHub renders. The
+governing rule is **"raw unless `todo`"** — only `layout: todo` round-trips through the task
+serializer; everything else is edited as raw markdown.
+
+| `layout` | View |
+|----------|------|
+| `todo` | AG Grid task table (Toolbar + table + detail drawer + notes). **Required** for the table — see *Task Table Format* below. |
+| `qa` | Two-column Typora-style Q&A view (`QaLayout`). |
+| _none / anything else_ | **Plain markdown editor** — one full-width Milkdown Crepe WYSIWYG document, `Cmd+/` toggles to the raw Monaco editor. |
+
+Both `qa` and plain docs are edited through the same raw-string path (`QaLayout`, seeded from
+`rawContent`, written via the debounced `guardedWrite`, never through `serializeProjectMd`). Plain
+docs are just a marker-less `QaLayout` (`parseQaBlocks` yields a single header editor, no `**>>>**`
+blocks), rendered with `variant="plain"` (the only difference is the "Markdown" badge). The single
+predicate `isRawDoc = layout !== "todo"` gates this in `App.tsx` and `useViewMode.ts`.
+
+> **Migration note**: a file that has a `## Tasks` table but no `layout: todo` now opens as a plain
+> markdown document (the table shows as literal markdown text, not an interactive grid). No data is
+> lost — `rawContent` is preserved verbatim. Add `layout: todo` to restore the table.
+
+## Task Table Format (`layout: todo`)
+
+A task-table file sets `layout: todo` and has three sections:
 
 ### 1. YAML Frontmatter
 
@@ -87,6 +109,7 @@ Each `.md` file has three sections:
 ---
 project: "Project Name"
 created: "2025-09-22T00:00:00.000Z"
+layout: todo
 views:
   default:
     group_by: status
@@ -156,6 +179,17 @@ A second question…
 - Text between `**>>>**` and `**<<<**` → left column.
 - Text after `**<<<**` (until the next `**>>>**` or EOF) → right column.
 - A file with no markers renders as one full-width editor.
+
+### Plain markdown files (no `layout`)
+
+A `.md` file with no `layout` (or any value other than `qa`/`todo`) is a **plain markdown
+document**. It reuses the exact `layout: qa` machinery: `QaLayout` is rendered with
+`variant="plain"`, and since the body has no `**>>>**`/`**<<<**` markers, `parseQaBlocks`
+returns a single header editor — i.e. one full-width Milkdown WYSIWYG document, with `Cmd+/`
+toggling to the raw Monaco editor. `assembleQa` round-trips a header-only doc to clean
+`frontmatter + body`, so saving never injects a task table or touches the frontmatter. The
+empty-doc case is handled by the header guard `doc.header || doc.blocks.length === 0` in
+`QaLayout` (so a brand-new empty file still shows an editable editor instead of a blank page).
 
 **Mermaid diagrams**: ` ```mermaid ` fenced blocks render as diagrams inside the
 WYSIWYG view. `@milkdown/plugin-diagram` parses the fence into a `diagram` node (and

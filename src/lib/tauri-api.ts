@@ -24,6 +24,7 @@ export function getDefaultProjectContent(): string {
   return `---
 project: "Untitled Project"
 created: "${today}"
+layout: todo
 views:
   default:
     group_by: status

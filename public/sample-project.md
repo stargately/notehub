@@ -1,6 +1,7 @@
 ---
 project: "Moonbase Alpha — Habitat Module"
 created: 2026-02-01T00:00:00.000Z
+layout: todo
 views:
   default:
     group_by: status

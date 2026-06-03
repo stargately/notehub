@@ -94,8 +94,9 @@ function App() {
   // avoiding race conditions with stale projectData from a previous filePath).
   const onDataLoaded = useCallback((data: ProjectData) => {
     if (activeTabId) {
-      // QA docs are edited as raw markdown, not serialized from tasks.
-      const snapshot = data.meta.layout === "qa" ? data.rawContent : serializeProjectMd(data);
+      // QA and plain docs are edited as raw markdown, not serialized from tasks.
+      // Only `layout: todo` serializes; everything else snapshots the raw content.
+      const snapshot = data.meta.layout !== "todo" ? data.rawContent : serializeProjectMd(data);
       undoHistory.initTab(activeTabId, snapshot);
     }
   }, [activeTabId, undoHistory]);
@@ -164,11 +165,14 @@ function App() {
   });
 
   const isQa = projectData?.meta.layout === "qa";
+  // "raw unless todo": both `layout: qa` and plain (no-layout) docs are edited as raw
+  // markdown via QaLayout — only `layout: todo` round-trips through the task serializer.
+  const isRawDoc = !!projectData && projectData.meta.layout !== "todo";
 
   // File watcher for external changes → reconcile against disk. `currentBytes` is what
   // we'd write right now (used as "mine" if there's a conflict); `loadFile` re-reads and
   // re-parses the file when a clean buffer is auto-reloaded.
-  const currentBytes = isQa
+  const currentBytes = isRawDoc
     ? editorContent
     : projectData
     ? serializeProjectMd(projectData)
@@ -294,7 +298,7 @@ function App() {
             />
           </div>
         </>
-      ) : isQa ? (
+      ) : isRawDoc ? (
         <QaLayout
           content={editorContent}
           onChange={handleEditorChange}
@@ -304,6 +308,7 @@ function App() {
           darkMode={darkMode}
           projectName={projectData?.meta.project}
           fileName={deriveBaseName(filePath)}
+          variant={isQa ? "qa" : "plain"}
         />
       ) : (
         <>

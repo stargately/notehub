@@ -40,25 +40,28 @@ export function useViewMode({
     setEditorContentMap((prev) => ({ ...prev, [activeTabId]: content }));
   }, [activeTabId]);
 
-  const isQa = projectData?.meta.layout === "qa";
+  // "raw unless todo": `layout: qa` and plain (no-layout) docs are edited as raw markdown.
+  // Only `layout: todo` round-trips through the task serializer.
+  const isRawDoc = !!projectData && projectData.meta.layout !== "todo";
 
-  // For `layout: qa` files the QA view and the Monaco editor share one raw string
+  // For raw docs the formatted view (QaLayout) and the Monaco editor share one raw string
   // (editorContent). Seed it from the parsed file whenever the file content changes
-  // (load, reload, tab switch). QA edits never touch projectData.rawContent, so this
+  // (load, reload, tab switch). These edits never touch projectData.rawContent, so this
   // effect does not fire on them and won't clobber in-progress edits.
   useEffect(() => {
-    if (!isQa) return;
+    if (!isRawDoc) return;
     setEditorContentMap((prev) =>
       prev[activeTabId] === projectData!.rawContent
         ? prev
         : { ...prev, [activeTabId]: projectData!.rawContent }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isQa, activeTabId, projectData?.rawContent]);
+  }, [isRawDoc, activeTabId, projectData?.rawContent]);
 
   const handleToggleViewMode = useCallback(() => {
-    if (isQa) {
-      // QA <-> Monaco share editorContent; just flip the mode. No task serialization.
+    if (isRawDoc) {
+      // Formatted (QaLayout) <-> Monaco share editorContent; just flip the mode.
+      // No task serialization for qa/plain docs.
       setViewMode(viewMode === "grid" ? "editor" : "grid");
       return;
     }
@@ -79,7 +82,7 @@ export function useViewMode({
         setViewMode("grid");
       }
     }
-  }, [isQa, viewMode, projectData, editorContent, activeTabId, undoHistory, replaceFromRaw, setEditorContent, setViewMode, setSelectedTaskId, setShowNotes]);
+  }, [isRawDoc, viewMode, projectData, editorContent, activeTabId, undoHistory, replaceFromRaw, setEditorContent, setViewMode, setSelectedTaskId, setShowNotes]);
 
   const editorSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleEditorChange = useCallback(

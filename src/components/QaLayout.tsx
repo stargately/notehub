@@ -32,6 +32,12 @@ interface QaLayoutProps {
   projectName?: string;
   /** Base file name (no dir, no `.md`) — used as the print/PDF document title. */
   fileName?: string;
+  /**
+   * "qa" → two-column Q&A doc (`layout: qa`). "plain" → a normal markdown file with
+   * no layout: it has no `**>>>**` markers, so it renders as one full-width editor.
+   * Only affects presentation (badge text); the edit/save path is identical.
+   */
+  variant?: "qa" | "plain";
 }
 
 interface ParsedState {
@@ -51,6 +57,7 @@ function parse(content: string): ParsedState {
  */
 export function QaLayout({
   content, onChange, onToggleEditor, onCycleTheme, themeMode, darkMode, projectName, fileName,
+  variant = "qa",
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
   // Bumped only on EXTERNAL content changes, to force a remount of the (mount-once) editors.
@@ -249,7 +256,7 @@ export function QaLayout({
           className="px-2 py-0.5 text-[10px] rounded-full font-medium uppercase tracking-wide"
           style={{ background: "var(--nh-accent-subtle)", color: "var(--nh-accent)" }}
         >
-          Q&amp;A
+          {variant === "qa" ? "Q&A" : "Markdown"}
         </span>
         <span className="text-[10px]" style={{ color: "var(--nh-text-tertiary)" }}>
           {isMac ? "Cmd" : "Ctrl"}+/ to edit raw · {isMac ? "Cmd" : "Ctrl"}+F to find · {isMac ? "Cmd" : "Ctrl"}+P to print
@@ -273,7 +280,7 @@ export function QaLayout({
       </div>
 
       <div ref={docRef} className="nh-qa-doc flex-1 overflow-y-auto">
-        {doc.header && (
+        {(doc.header || doc.blocks.length === 0) && (
           <div className="nh-qa-header" data-qa-field="header">
             <MarkdownWysiwyg key={`h-${themeKey}`} value={doc.header} onChange={updateHeader} darkMode={darkMode} placeholder="Write here…" />
           </div>
