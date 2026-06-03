@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { useProjectFile } from "./hooks/useProjectFile";
 import { useFileWatcher } from "./hooks/useFileWatcher";
+import { useFileSync } from "./hooks/useFileSync";
 import { useDarkMode } from "./hooks/useDarkMode";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { useTabManagement } from "./hooks/useTabManagement";
@@ -22,6 +23,7 @@ import { ThemeIcon } from "./components/ThemeIcon";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { MarkdownEditor } from "./components/MarkdownEditor";
 import { QaLayout } from "./components/QaLayout";
+import { ConflictModal } from "./components/ConflictModal";
 import { Toaster } from "sonner";
 
 function App() {
@@ -97,11 +99,15 @@ function App() {
     }
   }, [activeTabId, undoHistory]);
 
+  // Content-based reconciliation between the in-memory editor and the file on disk
+  // (so NoteHub can be co-edited with Claude Code writing the same file).
+  const fileSync = useFileSync();
+
   const {
     filePath, projectData, loading, error,
     loadFile, updateTasks, updateTask, addTask, updateNotes,
     replaceFromRaw, flushSave,
-  } = useProjectFile(activeFilePath, onBeforeSave, onDataLoaded);
+  } = useProjectFile(activeFilePath, onBeforeSave, onDataLoaded, fileSync);
 
   const {
     viewMode, editorContent,
@@ -110,7 +116,7 @@ function App() {
     activeTabId, activeFilePath, projectData,
     replaceFromRaw, flushSave, setTabs,
     setSelectedTaskId, setShowNotes,
-    undoHistory,
+    undoHistory, sync: fileSync,
   });
   cleanupTabRef.current = (tabId: string) => {
     cleanupTab(tabId);
@@ -156,10 +162,22 @@ function App() {
     flushPendingSnapshot,
   });
 
-  // File watcher for external changes
-  useFileWatcher(filePath, loadFile);
-
   const isQa = projectData?.meta.layout === "qa";
+
+  // File watcher for external changes → reconcile against disk. `currentBytes` is what
+  // we'd write right now (used as "mine" if there's a conflict); `loadFile` re-reads and
+  // re-parses the file when a clean buffer is auto-reloaded.
+  const currentBytes = isQa
+    ? editorContent
+    : projectData
+    ? serializeProjectMd(projectData)
+    : "";
+  const reconcileRef = useRef<() => void>(() => {});
+  reconcileRef.current = () => {
+    if (filePath) fileSync.reconcile(filePath, currentBytes, loadFile);
+  };
+  const handleExternalChange = useCallback(() => reconcileRef.current(), []);
+  useFileWatcher(filePath, handleExternalChange);
 
   if (!initialized || (loading && tabs.length === 0)) {
     return (
@@ -214,6 +232,11 @@ function App() {
   return (
     <div className="nh-app-root h-screen flex flex-col" style={{ background: "var(--nh-bg)" }}>
       <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
+      <ConflictModal
+        conflict={fileSync.conflict}
+        onKeepDisk={() => fileSync.resolveKeepDisk(loadFile)}
+        onKeepMine={() => fileSync.resolveKeepMine()}
+      />
       {isTauri && tabs.length > 0 && (
         <TabBar
           tabs={tabs}

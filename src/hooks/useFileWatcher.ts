@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { isWriteLocked } from "../lib/tauri-api";
 import type { FileChangedPayload } from "../lib/types";
 
 const isTauri = !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -17,7 +16,8 @@ export function useFileWatcher(
       listen<FileChangedPayload>("file-changed", (event) => {
         const { path } = event.payload;
         if (path !== filePath) return;
-        if (isWriteLocked(path)) return;
+        // Echo suppression (is this our own write?) is now content-based, handled by
+        // the reconcile callback comparing disk against the per-path baseline.
         onFileChanged();
       }).then((unlisten) => {
         cleanup = unlisten;

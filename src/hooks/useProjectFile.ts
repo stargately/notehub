@@ -10,6 +10,7 @@ import {
   type InitialSession,
 } from "../lib/tauri-api";
 import { toast } from "sonner";
+import type { FileSync } from "./useFileSync";
 
 export async function resolveInitialSession(): Promise<InitialSession> {
   try {
@@ -23,6 +24,7 @@ export function useProjectFile(
   filePath: string | null,
   onBeforeSave?: (currentData: ProjectData) => void,
   onDataLoaded?: (data: ProjectData) => void,
+  sync?: FileSync,
 ) {
   const [projectData, setProjectData] = useState<ProjectData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,6 +32,8 @@ export function useProjectFile(
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onDataLoadedRef = useRef(onDataLoaded);
   onDataLoadedRef.current = onDataLoaded;
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
 
   // Get the project directory from file path
   const projectDir = filePath ? filePath.replace(/\/[^/]+$/, "") : null;
@@ -39,6 +43,7 @@ export function useProjectFile(
     try {
       setLoading(true);
       const content = filePath ? await readFile(filePath) : getDefaultProjectContent();
+      if (filePath) syncRef.current?.markLoaded(filePath, content);
       const data = parseProjectMd(content);
       setProjectData(data);
       onDataLoadedRef.current?.(data);
@@ -65,11 +70,14 @@ export function useProjectFile(
       }
       setProjectData(data);
       if (!filePath) return;
+      syncRef.current?.markDirty(filePath);
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(async () => {
         try {
           const content = serializeProjectMd(data);
-          await writeFile(filePath, content);
+          const s = syncRef.current;
+          if (s) await s.guardedWrite(filePath, content);
+          else await writeFile(filePath, content);
         } catch (e) {
           toast.error("Failed to save file", { id: "save-error" });
         }
@@ -191,7 +199,9 @@ export function useProjectFile(
     }
     try {
       const content = serializeProjectMd(projectData);
-      await writeFile(filePath, content);
+      const s = syncRef.current;
+      if (s) await s.guardedWrite(filePath, content);
+      else await writeFile(filePath, content);
     } catch (e) {
       toast.error("Failed to save file", { id: "save-error" });
     }

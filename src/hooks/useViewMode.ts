@@ -4,6 +4,7 @@ import { serializeProjectMd } from "../lib/markdown-parser";
 import { saveFileDialog, writeFile } from "../lib/tauri-api";
 import { toast } from "sonner";
 import type { UndoHistory } from "./useUndoHistory";
+import type { FileSync } from "./useFileSync";
 
 interface UseViewModeOptions {
   activeTabId: string;
@@ -15,13 +16,16 @@ interface UseViewModeOptions {
   setSelectedTaskId: (id: string | null) => void;
   setShowNotes: (show: boolean) => void;
   undoHistory?: UndoHistory;
+  sync?: FileSync;
 }
 
 export function useViewMode({
   activeTabId, activeFilePath, projectData,
   replaceFromRaw, flushSave, setTabs,
-  setSelectedTaskId, setShowNotes, undoHistory,
+  setSelectedTaskId, setShowNotes, undoHistory, sync,
 }: UseViewModeOptions) {
+  const syncRef = useRef(sync);
+  syncRef.current = sync;
   const [viewModeMap, setViewModeMap] = useState<Record<string, ViewMode>>({});
   const [editorContentMap, setEditorContentMap] = useState<Record<string, string>>({});
 
@@ -82,10 +86,13 @@ export function useViewMode({
     (content: string) => {
       setEditorContent(content);
       if (!activeFilePath) return;
+      syncRef.current?.markDirty(activeFilePath);
       if (editorSaveTimeoutRef.current) clearTimeout(editorSaveTimeoutRef.current);
       editorSaveTimeoutRef.current = setTimeout(async () => {
         try {
-          await writeFile(activeFilePath, content);
+          const s = syncRef.current;
+          if (s) await s.guardedWrite(activeFilePath, content);
+          else await writeFile(activeFilePath, content);
         } catch {
           toast.error("Failed to save editor changes", { id: "editor-save-error" });
         }
@@ -113,7 +120,9 @@ export function useViewMode({
           clearTimeout(editorSaveTimeoutRef.current);
           editorSaveTimeoutRef.current = null;
         }
-        await writeFile(activeFilePath, editorContent);
+        const s = syncRef.current;
+        if (s) await s.guardedWrite(activeFilePath, editorContent);
+        else await writeFile(activeFilePath, editorContent);
       }
       return;
     }

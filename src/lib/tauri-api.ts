@@ -127,12 +127,6 @@ export async function readFile(path: string): Promise<string> {
   return invoke<string>("read_file", { path });
 }
 
-const writeLock = new Set<string>();
-
-export function isWriteLocked(path: string): boolean {
-  return writeLock.has(path);
-}
-
 export async function openUrl(url: string): Promise<void> {
   if (isTauri) {
     try {
@@ -158,12 +152,10 @@ export async function writeFile(path: string, content: string): Promise<void> {
     return;
   }
   const invoke = await getInvoke();
-  writeLock.add(path);
-  try {
-    await invoke<void>("write_file", { path, content });
-  } finally {
-    setTimeout(() => writeLock.delete(path), 1000);
-  }
+  // Echo from our own write is suppressed by content comparison against the per-path
+  // baseline in useFileSync — no time-based lock needed (it would swallow concurrent
+  // external writes that happen to land within the window).
+  await invoke<void>("write_file", { path, content });
 }
 
 // Terminal API

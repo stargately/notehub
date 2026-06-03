@@ -175,9 +175,13 @@ same debounced `writeFile` path used by the Monaco editor (`useViewMode.handleEd
 - **Auto-generated IDs**: When a markdown file has no `id` column, the parser auto-assigns sequential IDs (`"001"`, `"002"`, ...) so AG Grid always has unique row keys. These IDs get serialized back on save.
 - **Data flow**: Markdown file → gray-matter parse → AG Grid/Tiptap → serialize back → atomic file write
 - **Atomic writes**: Write to `.tmp` file, then rename (prevents corruption)
-- **Write lock**: 1-second lock after writing prevents re-triggering own file change events
 - **File watcher**: Rust `notify` crate watches `.md` files, filters out `.tmp`/`.git`, emits `"file-changed"` events to React via Tauri
 - **Save debounce**: 300ms debounce on React side
+- **Disk reconciliation** (`src/hooks/useFileSync.ts`): NoteHub is meant to be co-edited with Claude Code writing the same `.md`. Per path it tracks a **baseline** (the exact bytes last read/written = "what's on disk") and a **dirty** flag. The model mirrors VS Code/IntelliJ: disk is the source of truth.
+  - **Echo suppression is content-based** (not a timer): on a `file-changed` event, `reconcile` re-reads disk; if it equals the baseline it's our own write → ignored. (The old 1-second `writeLock` was removed — a timer could swallow a concurrent external write that landed within the window.)
+  - **Clean buffer + external change → live auto-reload** (VS Code style): `reconcile` calls `loadFile` and the editor updates instantly.
+  - **Dirty buffer + external change → conflict**: a blocking **`ConflictModal`** (Keep disk / Keep mine) — NoteHub never silently discards either side (IntelliJ "File Cache Conflict").
+  - **Single write chokepoint**: all watched-file writes go through `guardedWrite`, which re-reads disk first and raises a conflict instead of clobbering an external change — this is what stops the 300ms autosave from overwriting Claude when the debounce races the watcher. Every load/write updates the baseline.
 - **Browser fallback**: Runs without Tauri using `sample-project.md` for UI testing
 - **Dark mode**: Class-based (`dark` class), AG Grid + Tailwind themed
 

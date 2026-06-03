@@ -132,6 +132,22 @@ Built-in fields have their types inferred automatically — you only need `type`
 
 Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the app. The terminal opens in the active file's directory and persists its session when hidden. Requires the desktop app (Tauri).
 
+## Live Sync with External Edits
+
+Markdown files are the single source of truth, so NoteHub is built to be edited at the
+same time as another tool — for example Claude Code writing the same `.md` file. The disk
+is always authoritative:
+
+- **You're not editing → the file updates live.** When something else writes the file,
+  NoteHub reloads it instantly so you can watch the changes appear.
+- **You're mid-edit when the file also changes on disk → NoteHub asks.** A
+  *"File changed on disk"* dialog lets you **Keep disk** (take the external version) or
+  **Keep mine** (overwrite it with your version). Your work is never silently discarded,
+  and NoteHub never silently overwrites an external change.
+
+Your own edits autosave (300ms debounce) and never trigger a false "changed on disk"
+prompt.
+
 ## Keyboard Shortcuts
 
 | Shortcut | Action |
