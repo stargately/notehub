@@ -136,6 +136,16 @@ Built-in fields have their types inferred automatically — you only need `type`
 
 Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the app. The terminal opens in the active file's directory and persists its session when hidden. Requires the desktop app (Tauri).
 
+Run several terminals at once, like Claude Code / Zed / iTerm2:
+
+- **`+` (new tab)** — opens a completely separate terminal in its own tab; click a tab to
+  switch. Each tab keeps running (and keeps its scrollback) while hidden.
+- **Split icon / `Cmd+D`** — splits the current tab into side-by-side panes, each its own
+  shell. Drag the divider between panes to resize them.
+
+Close a tab or pane with its `×`. A pane whose shell exits (`exit`) closes itself; the last
+remaining tab is always kept.
+
 ## Live Sync with External Edits
 
 Markdown files are the single source of truth, so NoteHub is built to be edited at the
@@ -164,6 +174,7 @@ prompt.
 | `Cmd+P` | Print the QA doc (compact cheatsheet, letter size) |
 | `Cmd+1-9` | Switch tabs |
 | `Ctrl+`` `` | Toggle terminal |
+| `Cmd+D` | Split the active terminal pane side-by-side |
 | `Escape` | Close detail drawer |
 
 ## Architecture

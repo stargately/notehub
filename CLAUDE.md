@@ -18,7 +18,8 @@ notehub/
 │   │   ├── MarkdownWysiwyg.tsx # Milkdown Crepe WYSIWYG editor wrapper
 │   │   ├── Toolbar.tsx         # Filters, toggles, new task
 │   │   ├── TabBar.tsx          # Multi-file tabs
-│   │   ├── TerminalPanel.tsx    # Integrated terminal (xterm.js)
+│   │   ├── TerminalPanel.tsx    # Terminal manager: tabs + side-by-side split panes
+│   │   ├── TerminalView.tsx     # A single terminal (one xterm + one PTY session)
 │   │   ├── MarkdownEditor.tsx  # Raw markdown textarea editor
 │   │   ├── cell-renderers/     # AG Grid display components
 │   │   └── cell-editors/       # AG Grid edit components
@@ -214,7 +215,33 @@ replace still work without it.
   the browser's "Save as PDF" defaults to a name consistent with the file on disk.
 - `Cmd+1-9` — Switch tabs
 - `Ctrl+`` `` — Toggle terminal
+- `Cmd+D` — Split the active terminal pane side-by-side (only when terminal focused)
 - `Escape` — Close detail drawer
+
+## Integrated Terminal — tabs & split panes
+
+The terminal panel supports multiple terminals, like Claude Code / Zed / iTerm2. The
+backend (`src-tauri/src/terminal.rs`) is already multi-session — `TerminalState` keeps a
+`Mutex<HashMap<u32, TerminalSession>>` and every command/event is keyed by `session_id`;
+the tab/split feature is purely frontend.
+
+- **`src/components/TerminalView.tsx`** owns exactly one xterm instance + one PTY session
+  (spawn on mount, `terminal-output`/`terminal-exit` listeners filtered by its session id,
+  `FitAddon` + `ResizeObserver` refit, `killTerminal` + dispose on unmount).
+- **`src/components/TerminalPanel.tsx`** is the manager. State is `tabs: TermTab[]`, where
+  `TermTab = { id, title, panes: TermPane[] }` and `TermPane = { id, weight }`. It tracks
+  `activeTabId` and `activePaneId`. Client-side string ids (`t1`, `t2`, …) are the React
+  `key`s and are independent of backend session ids.
+  - **`+` icon** → `addTab()`: a new tab ("Terminal N") with one pane.
+  - **split icon / `Cmd+D`** → `splitActivePane()`: appends a pane to the active tab; panes
+    render in a `flex-direction: row` with a draggable `col-resize` divider that trades
+    `weight` between the two flanking panes.
+  - **Every tab stays mounted** (visibility via `display`, never unmounted) so background
+    terminals keep running and retain scrollback.
+  - Closing the last pane closes the tab; closing the last tab leaves one fresh tab. A
+    pane whose shell exits (`terminal-exit`) auto-closes via `onExit`.
+  - `Cmd+D` is handled by a local listener gated on `panelRootRef.contains(activeElement)`
+    so it never hijacks Cmd+D from the editor/grid.
 
 ## Development Guidelines
 

@@ -1,15 +1,5 @@
-import { useEffect, useRef, useCallback, useState } from "react";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
-import "@xterm/xterm/css/xterm.css";
-import {
-  isTauri,
-  spawnTerminal,
-  writeTerminal,
-  resizeTerminal,
-  killTerminal,
-} from "../lib/tauri-api";
-import type { TerminalOutputPayload } from "../lib/types";
+import { useEffect, useRef, useCallback, useState, Fragment } from "react";
+import { TerminalView } from "./TerminalView";
 
 interface TerminalPanelProps {
   visible: boolean;
@@ -17,144 +7,140 @@ interface TerminalPanelProps {
   onClose: () => void;
 }
 
+interface TermPane {
+  id: string;
+  weight: number; // flex ratio relative to sibling panes
+}
+
+interface TermTab {
+  id: string;
+  title: string;
+  panes: TermPane[];
+}
+
 export function TerminalPanel({ visible, cwd, onClose }: TerminalPanelProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
-  const sessionIdRef = useRef<number | null>(null);
-  const unlistenRef = useRef<(() => void) | null>(null);
+  // Monotonic counters: one for stable unique ids (panes + tabs), one for the
+  // human-facing "Terminal N" tab titles.
+  const seqRef = useRef(0);
+  const tabNumRef = useRef(0);
+  const makeId = () => `t${++seqRef.current}`;
+  const makeTab = useCallback((): TermTab => ({
+    id: makeId(),
+    title: `Terminal ${++tabNumRef.current}`,
+    panes: [{ id: makeId(), weight: 1 }],
+  }), []);
+
+  // Seed all three pieces of state from a single initial tab so they can't
+  // desync (e.g. under React StrictMode's double-invoked initializers).
+  const initialTabRef = useRef<TermTab | null>(null);
+  if (!initialTabRef.current) initialTabRef.current = makeTab();
+  const [tabs, setTabs] = useState<TermTab[]>([initialTabRef.current]);
+  const [activeTabId, setActiveTabId] = useState<string>(initialTabRef.current.id);
+  const [activePaneId, setActivePaneId] = useState<string>(initialTabRef.current.panes[0].id);
+
   const [panelHeight, setPanelHeight] = useState(300);
   const draggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
+  const panelRootRef = useRef<HTMLDivElement>(null);
 
-  // Initialize xterm + PTY once
-  useEffect(() => {
-    if (!containerRef.current) return;
+  // --- Tab / pane actions -------------------------------------------------
 
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 13,
-      fontFamily: "Menlo, Monaco, 'Courier New', monospace",
-      theme: {
-        background: "#1e1e1e",
-        foreground: "#d4d4d4",
-        cursor: "#d4d4d4",
-        selectionBackground: "#264f78",
-        // Full 16-color ANSI palette (VS Code Dark+) so colored output matches
-        // a real terminal.
-        black: "#000000",
-        red: "#cd3131",
-        green: "#0dbc79",
-        yellow: "#e5e510",
-        blue: "#2472c8",
-        magenta: "#bc3fbc",
-        cyan: "#11a8cd",
-        white: "#e5e5e5",
-        brightBlack: "#666666",
-        brightRed: "#f14c4c",
-        brightGreen: "#23d18b",
-        brightYellow: "#f5f543",
-        brightBlue: "#3b8eea",
-        brightMagenta: "#d670d6",
-        brightCyan: "#29b8db",
-        brightWhite: "#e5e5e5",
-      },
-      scrollback: 5000,
-    });
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    term.open(containerRef.current);
-    fitAddon.fit();
+  const addTab = useCallback(() => {
+    const tab = makeTab();
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(tab.id);
+    setActivePaneId(tab.panes[0].id);
+  }, [makeTab]);
 
-    termRef.current = term;
-    fitAddonRef.current = fitAddon;
+  const splitActivePane = useCallback(() => {
+    const newPaneId = makeId();
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (t.id !== activeTabId) return t;
+        const avg = t.panes.reduce((s, p) => s + p.weight, 0) / t.panes.length;
+        return { ...t, panes: [...t.panes, { id: newPaneId, weight: avg }] };
+      })
+    );
+    setActivePaneId(newPaneId);
+  }, [activeTabId]);
 
-    if (isTauri) {
-      // Spawn PTY
-      spawnTerminal(cwd)
-        .then(async (id) => {
-          sessionIdRef.current = id;
+  const closeTab = useCallback(
+    (tabId: string) => {
+      setTabs((prev) => {
+        const next = prev.filter((t) => t.id !== tabId);
+        if (next.length === 0) {
+          // Never leave zero tabs — keep one fresh terminal.
+          const fresh = makeTab();
+          setActiveTabId(fresh.id);
+          setActivePaneId(fresh.panes[0].id);
+          return [fresh];
+        }
+        if (tabId === activeTabId) {
+          const idx = prev.findIndex((t) => t.id === tabId);
+          const neighbor = next[Math.min(idx, next.length - 1)];
+          setActiveTabId(neighbor.id);
+          setActivePaneId(neighbor.panes[0].id);
+        }
+        return next;
+      });
+    },
+    [activeTabId, makeTab]
+  );
 
-          // Listen for PTY output
-          const { listen } = await import("@tauri-apps/api/event");
-          const unlisten = await listen<TerminalOutputPayload>(
-            "terminal-output",
-            (event) => {
-              if (event.payload.session_id === id) {
-                term.write(event.payload.data);
-              }
-            }
-          );
-          unlistenRef.current = unlisten;
-
-          // Send input to PTY
-          term.onData((data) => {
-            writeTerminal(id, data);
-          });
-
-          // Send initial resize
-          const dims = fitAddon.proposeDimensions();
-          if (dims) {
-            resizeTerminal(id, dims.cols, dims.rows);
+  const closePane = useCallback(
+    (tabId: string, paneId: string) => {
+      setTabs((prev) => {
+        const tab = prev.find((t) => t.id === tabId);
+        if (!tab) return prev;
+        // Closing the last pane of a tab closes the whole tab.
+        if (tab.panes.length <= 1) {
+          const next = prev.filter((t) => t.id !== tabId);
+          if (next.length === 0) {
+            const fresh = makeTab();
+            setActiveTabId(fresh.id);
+            setActivePaneId(fresh.panes[0].id);
+            return [fresh];
           }
-        })
-        .catch((err) => {
-          term.write(`\r\nFailed to start terminal: ${err}\r\n`);
-        });
-    } else {
-      term.write("Terminal requires the desktop app.\r\n");
-    }
+          if (tabId === activeTabId) {
+            const idx = prev.findIndex((t) => t.id === tabId);
+            const neighbor = next[Math.min(idx, next.length - 1)];
+            setActiveTabId(neighbor.id);
+            setActivePaneId(neighbor.panes[0].id);
+          }
+          return next;
+        }
+        const paneIdx = tab.panes.findIndex((p) => p.id === paneId);
+        const remaining = tab.panes.filter((p) => p.id !== paneId);
+        if (paneId === activePaneId) {
+          const neighbor = remaining[Math.min(paneIdx, remaining.length - 1)];
+          setActivePaneId(neighbor.id);
+        }
+        return prev.map((t) =>
+          t.id === tabId ? { ...t, panes: remaining } : t
+        );
+      });
+    },
+    [activeTabId, activePaneId, makeTab]
+  );
 
-    return () => {
-      if (unlistenRef.current) {
-        unlistenRef.current();
-        unlistenRef.current = null;
+  // Cmd+D to split — only while the terminal panel is visible and focused,
+  // so it never hijacks Cmd+D from the editor/grid.
+  useEffect(() => {
+    if (!visible) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "d") {
+        if (!panelRootRef.current?.contains(document.activeElement)) return;
+        e.preventDefault();
+        splitActivePane();
       }
-      if (sessionIdRef.current !== null) {
-        killTerminal(sessionIdRef.current);
-        sessionIdRef.current = null;
-      }
-      term.dispose();
-      termRef.current = null;
-      fitAddonRef.current = null;
     };
-    // Only run once on mount — cwd is captured at spawn time
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [visible, splitActivePane]);
 
-  // Refit when visibility or height changes
-  useEffect(() => {
-    if (visible && fitAddonRef.current && termRef.current) {
-      // Small delay to let CSS layout settle
-      const timer = setTimeout(() => {
-        fitAddonRef.current?.fit();
-        const dims = fitAddonRef.current?.proposeDimensions();
-        if (dims && sessionIdRef.current !== null) {
-          resizeTerminal(sessionIdRef.current, dims.cols, dims.rows);
-        }
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [visible, panelHeight]);
+  // --- Panel height drag handle -------------------------------------------
 
-  // ResizeObserver for container size changes
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new ResizeObserver(() => {
-      if (visible && fitAddonRef.current) {
-        fitAddonRef.current.fit();
-        const dims = fitAddonRef.current.proposeDimensions();
-        if (dims && sessionIdRef.current !== null) {
-          resizeTerminal(sessionIdRef.current, dims.cols, dims.rows);
-        }
-      }
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, [visible]);
-
-  // Drag handle for resizing
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -181,8 +167,65 @@ export function TerminalPanel({ visible, cwd, onClose }: TerminalPanelProps) {
     [panelHeight]
   );
 
+  // --- Pane divider drag (adjusts the two flanking panes' weights) --------
+
+  const handleDividerDown = useCallback(
+    (tabId: string, leftIdx: number) => (e: React.MouseEvent) => {
+      e.preventDefault();
+      const rowEl = (e.currentTarget as HTMLElement).parentElement;
+      if (!rowEl) return;
+      const startX = e.clientX;
+      const rowWidth = rowEl.getBoundingClientRect().width;
+
+      const tab = tabs.find((t) => t.id === tabId);
+      if (!tab) return;
+      const leftStart = tab.panes[leftIdx].weight;
+      const rightStart = tab.panes[leftIdx + 1].weight;
+      const pairTotal = leftStart + rightStart;
+
+      const move = (ev: MouseEvent) => {
+        const dxRatio = ((ev.clientX - startX) / rowWidth) * tab.panes.length;
+        let newLeft = leftStart + dxRatio;
+        // Keep both panes above a small minimum.
+        const min = pairTotal * 0.1;
+        newLeft = Math.max(min, Math.min(pairTotal - min, newLeft));
+        const newRight = pairTotal - newLeft;
+        setTabs((prev) =>
+          prev.map((t) => {
+            if (t.id !== tabId) return t;
+            const panes = t.panes.slice();
+            panes[leftIdx] = { ...panes[leftIdx], weight: newLeft };
+            panes[leftIdx + 1] = { ...panes[leftIdx + 1], weight: newRight };
+            return { ...t, panes };
+          })
+        );
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    },
+    [tabs]
+  );
+
+  // --- Render -------------------------------------------------------------
+
+  const iconBtn: React.CSSProperties = {
+    background: "none",
+    border: "none",
+    color: "#cccccc",
+    cursor: "pointer",
+    padding: "2px 4px",
+    display: "flex",
+    alignItems: "center",
+    lineHeight: 1,
+  };
+
   return (
     <div
+      ref={panelRootRef}
       style={{
         height: panelHeight,
         display: visible ? "flex" : "none",
@@ -201,13 +244,13 @@ export function TerminalPanel({ visible, cwd, onClose }: TerminalPanelProps) {
         }}
       />
 
-      {/* Header */}
+      {/* Header: tab strip + actions */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "2px 8px",
+          padding: "2px 6px",
           backgroundColor: "#252526",
           color: "#cccccc",
           fontSize: 12,
@@ -215,33 +258,120 @@ export function TerminalPanel({ visible, cwd, onClose }: TerminalPanelProps) {
           userSelect: "none",
         }}
       >
-        <span>Terminal</span>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#cccccc",
-            cursor: "pointer",
-            fontSize: 16,
-            lineHeight: 1,
-            padding: "0 4px",
-          }}
-          title="Close terminal (Ctrl+`)"
-        >
-          &times;
-        </button>
+        {/* Tabs */}
+        <div style={{ display: "flex", alignItems: "center", gap: 2, overflow: "hidden" }}>
+          {tabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            return (
+              <div
+                key={tab.id}
+                onClick={() => {
+                  setActiveTabId(tab.id);
+                  setActivePaneId(tab.panes[0].id);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  backgroundColor: isActive ? "#37373d" : "transparent",
+                  color: isActive ? "#ffffff" : "#aaaaaa",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span>{tab.title}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(tab.id);
+                  }}
+                  style={{ ...iconBtn, padding: 0 }}
+                  title="Close tab"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <button onClick={splitActivePane} style={iconBtn} title="Split right (Cmd+D)">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <rect x="3" y="4" width="18" height="16" rx="1.5" strokeWidth={2} />
+              <line x1="12" y1="4" x2="12" y2="20" strokeWidth={2} />
+            </svg>
+          </button>
+          <button onClick={addTab} style={iconBtn} title="New terminal tab">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+          <button onClick={onClose} style={{ ...iconBtn, fontSize: 16 }} title="Close terminal (Ctrl+`)">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Terminal container */}
-      <div
-        ref={containerRef}
-        style={{
-          flex: 1,
-          overflow: "hidden",
-          backgroundColor: "#1e1e1e",
-        }}
-      />
+      {/* Bodies: every tab stays mounted (display toggled) so background
+          terminals keep running and retain scrollback. */}
+      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        {tabs.map((tab) => (
+          <div
+            key={tab.id}
+            style={{
+              display: tab.id === activeTabId ? "flex" : "none",
+              flexDirection: "row",
+              width: "100%",
+              height: "100%",
+            }}
+          >
+            {tab.panes.map((pane, idx) => (
+              <Fragment key={pane.id}>
+                <div
+                  style={{
+                    flex: pane.weight,
+                    minWidth: 0,
+                    height: "100%",
+                    outline:
+                      tab.id === activeTabId &&
+                      pane.id === activePaneId &&
+                      tab.panes.length > 1
+                        ? "1px solid #37373d"
+                        : "none",
+                  }}
+                >
+                  <TerminalView
+                    cwd={cwd}
+                    visible={tab.id === activeTabId}
+                    active={pane.id === activePaneId}
+                    onFocus={() => setActivePaneId(pane.id)}
+                    onExit={() => closePane(tab.id, pane.id)}
+                  />
+                </div>
+                {idx < tab.panes.length - 1 && (
+                  <div
+                    onMouseDown={handleDividerDown(tab.id, idx)}
+                    style={{
+                      width: 4,
+                      cursor: "col-resize",
+                      backgroundColor: "#333",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+              </Fragment>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
