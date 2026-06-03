@@ -12,6 +12,7 @@ import {
 } from "../lib/tauri-api";
 import { fileKindForPath } from "../lib/file-kind";
 import { parentDir, isUnderRoot } from "../lib/tree-refresh";
+import { noteOpened } from "../lib/recent-files";
 import type { TabInfo } from "../lib/types";
 
 let tabCounter = 0;
@@ -45,6 +46,9 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
   const [tabs, setTabs] = useState<TabInfo[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>("");
   const [initialized, setInitialized] = useState(false);
+  // Current tabs snapshot for callbacks (e.g. closeTabByPath) that shouldn't re-create on change.
+  const tabsRef = useRef<TabInfo[]>(tabs);
+  tabsRef.current = tabs;
   // The persisted session belongs to the main window only; spawned workspace windows
   // (label "workspace-N") start fresh and never write the shared session file.
   const [isMainWindow, setIsMainWindow] = useState(true);
@@ -128,6 +132,7 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
     async (path: string) => {
       const canonical = await canonicalizePath(path);
       noteRecentDocument(canonical);
+      noteOpened(canonical); // in-memory MRU for the Cmd+P finder's empty-query ordering
       if (!isUnderRoot(canonical, workspaceRoot)) {
         startWatching(parentDir(canonical));
       }
@@ -174,6 +179,36 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
     setActiveTabId(id);
   }, []);
 
+  // After a tree rename, point any open tab at the new path (also handles descendants of a
+  // renamed folder, whose paths share the old folder prefix).
+  const renameTabPath = useCallback((oldPath: string, newPath: string) => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (!t.filePath) return t;
+        if (t.filePath === oldPath) {
+          return { ...t, filePath: newPath, label: newPath.split("/").pop() ?? t.label };
+        }
+        const prefix = oldPath.endsWith("/") ? oldPath : oldPath + "/";
+        if (t.filePath.startsWith(prefix)) {
+          const moved = newPath + t.filePath.slice(oldPath.length);
+          return { ...t, filePath: moved, label: moved.split("/").pop() ?? t.label };
+        }
+        return t;
+      }),
+    );
+  }, []);
+
+  // After a tree delete, close any open tab for the path or anything beneath it (folder delete).
+  const closeTabByPath = useCallback(
+    (path: string) => {
+      const prefix = path.endsWith("/") ? path : path + "/";
+      tabsRef.current
+        .filter((t) => t.filePath === path || (t.filePath?.startsWith(prefix) ?? false))
+        .forEach((t) => handleCloseTab(t.id));
+    },
+    [handleCloseTab],
+  );
+
   // Drag-and-drop markdown files to open as tabs
   useEffect(() => {
     if (!isTauri) return;
@@ -217,5 +252,6 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
     tabs, setTabs, activeTabId, setActiveTabId, initialized,
     activeFilePath, terminalCwd,
     handleAddTab, handleCloseTab, handleSelectTab, openPath,
+    renameTabPath, closeTabByPath,
   };
 }

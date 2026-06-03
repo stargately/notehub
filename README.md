@@ -124,7 +124,7 @@ Press `Cmd+/` to switch between the formatted editor and the raw markdown code e
 Press `Cmd+F` to open the find & replace bar — it searches the whole document (header
 plus every question/answer column), highlights matches, navigates with `Enter` /
 `Shift+Enter`, and can replace the current match or all of them. `Esc` closes it.
-Press `Cmd+P` (or the **Print** button) to print the document as a compact, cheatsheet-style
+Press `Cmd+Shift+P` (or the **Print** button) to print the document as a compact, cheatsheet-style
 handout on letter-size pages — the two-column layout and mermaid diagrams are preserved. When
 you "Save as PDF", the default file name matches the source markdown file.
 
@@ -189,6 +189,32 @@ The tree shows everything except noise directories (`.git`, `node_modules`, `.DS
 put), and re-opening a folder already open just focuses its window. The last folder is remembered
 and reopened on launch. Requires the desktop app (Tauri).
 
+### The File menu
+
+A thin **File ▾** menu bar sits at the top of the window (Zed-style). It collects the common file
+actions in one place: **New File**, **New Folder**, **Open File…** (`Cmd+O`), **Open Folder…**,
+**Quick Open** (`Cmd+P`), **Save** (`Cmd+S`), and **Refresh File Tree**. New File / New Folder create
+at the workspace root (greyed out until a folder is open).
+
+### Managing files in the tree
+
+Right-click any file or folder (or use the **File** menu above) to manage files like in Zed/VS Code:
+
+- **New File / New Folder** — type the name inline in the tree; a new `.md` opens immediately as a
+  plain markdown document.
+- **Rename** — inline edit with the basename pre-selected (the extension is left untouched). Any
+  open tab for the file (or files inside a renamed folder) follows the new path automatically.
+- **Delete** — moves the item to the **OS Trash** (recoverable from Finder), after a confirmation.
+  Any open tab for it closes.
+- **Reveal in Finder** / **Copy Path** — locate the file in the OS file manager, or copy its path.
+
+### Quick open (`Cmd+P`)
+
+Press `Cmd+P` for a fuzzy **quick-open** finder over every file in the workspace — start typing to
+filter by name or path (matched characters are highlighted), use `↑`/`↓` to move and `Enter` to
+open, `Esc` to dismiss. With an empty query it lists your open and recently-opened files. The index
+is **gitignore-aware** (like Zed): files matched by `.gitignore`/`.ignore` are excluded.
+
 ## Integrated Terminal
 
 Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the app. The terminal opens in the active file's directory and persists its session when hidden. Requires the desktop app (Tauri).
@@ -224,11 +250,13 @@ prompt.
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+N` | New task |
+| `Cmd+O` | Open file (OS dialog) |
 | `Cmd+F` | Focus filter (task view) · Find & replace (`layout: qa` / plain markdown view) |
 | `Cmd+R` | Reload file |
 | `Cmd+S` | Save (or Save As for untitled) |
 | `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa` and plain markdown files) |
-| `Cmd+P` | Print the QA doc (compact cheatsheet, letter size) |
+| `Cmd+P` | Quick-open: fuzzy file finder over the workspace |
+| `Cmd+Shift+P` | Print the QA doc (compact cheatsheet, letter size) |
 | `Cmd+B` | Toggle the workspace file-tree sidebar |
 | `Cmd+1-9` | Switch tabs |
 | `Ctrl+`` `` | Toggle terminal |

@@ -10,6 +10,8 @@ import type { FileChangedPayload } from "./types";
 type Listener = () => void;
 
 const listeners = new Map<string, Set<Listener>>();
+/** Subscribers that fire on *any* file-changed event (e.g. the quick-open file index). */
+const globalListeners = new Set<Listener>();
 let started = false;
 
 /** The directory portion of a path (no trailing slash). Exposed for testing. */
@@ -34,6 +36,7 @@ async function ensureStarted() {
   await listen<FileChangedPayload>("file-changed", (event) => {
     const dir = parentDir(event.payload.path);
     listeners.get(dir)?.forEach((cb) => cb());
+    globalListeners.forEach((cb) => cb());
   });
 }
 
@@ -49,6 +52,15 @@ export function subscribeDir(dir: string, cb: Listener): () => void {
   return () => {
     set!.delete(cb);
     if (set!.size === 0) listeners.delete(dir);
+  };
+}
+
+/** Subscribe to *any* file-changed event (not tied to a directory). Returns an unsubscribe fn. */
+export function subscribeAll(cb: Listener): () => void {
+  void ensureStarted();
+  globalListeners.add(cb);
+  return () => {
+    globalListeners.delete(cb);
   };
 }
 

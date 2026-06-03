@@ -118,6 +118,72 @@ pub async fn read_dir(path: String) -> Result<Vec<DirEntryInfo>, String> {
     Ok(sort_dir_entries(entries))
 }
 
+/// One file in the recursive workspace index returned to the quick-open finder. snake_case so the
+/// frontend `FileEntry` type matches the JSON verbatim (same convention as `DirEntryInfo`).
+#[derive(Serialize, Debug, Clone, PartialEq)]
+pub struct FileEntry {
+    pub path: String,
+    pub rel: String,
+    pub name: String,
+}
+
+/// Hard cap on indexed files so a huge tree can't blow up the walk or the JSON payload.
+const MAX_INDEX_FILES: usize = 20_000;
+
+/// The `/`-separated path of `path` relative to `root` (the fuzzy-match target). Falls back to the
+/// basename when `path` isn't under `root`. Pure (string-level) so it's unit-testable.
+fn rel_path(root: &Path, path: &Path) -> String {
+    match path.strip_prefix(root) {
+        Ok(rel) => rel.to_string_lossy().replace('\\', "/"),
+        Err(_) => path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    }
+}
+
+/// Recursively collect every file under `root`, honoring `.gitignore`/`.ignore` (via the `ignore`
+/// crate, even outside a git repo) and skipping `is_noise_dir` directories, capped at
+/// `MAX_INDEX_FILES`. Dotfiles are kept (NoteHub shows them in the tree). Files only — directories
+/// aren't openable as tabs. Driven by a real filesystem path so a tempdir exercises it in tests.
+fn walk_files(root: &Path) -> Vec<FileEntry> {
+    let mut out = Vec::new();
+    let walker = ignore::WalkBuilder::new(root)
+        .hidden(false) // keep dotfiles; .gitignore rules still apply
+        .require_git(false) // honor .gitignore even when the folder isn't a git repo
+        .filter_entry(|e| {
+            // Prune noise dirs (.git/node_modules/.DS_Store) regardless of gitignore state.
+            e.file_name()
+                .to_str()
+                .map(|n| !is_noise_dir(n))
+                .unwrap_or(true)
+        })
+        .build();
+    for dent in walker.flatten() {
+        if out.len() >= MAX_INDEX_FILES {
+            break;
+        }
+        if dent.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            let path = dent.path();
+            out.push(FileEntry {
+                path: path.to_string_lossy().to_string(),
+                rel: rel_path(root, path),
+                name: dent.file_name().to_string_lossy().to_string(),
+            });
+        }
+    }
+    out
+}
+
+/// Recursively list every file under `root` for the quick-open fuzzy finder. Gitignore-aware (see
+/// `walk_files`). `root` is canonicalized so the absolute paths match `openPath`'s canonical form
+/// and the watcher's realpath events.
+#[tauri::command]
+pub async fn list_workspace_files(root: String) -> Result<Vec<FileEntry>, String> {
+    let base = fs::canonicalize(&root).map_err(|e| format!("Failed to index {}: {}", root, e))?;
+    Ok(walk_files(&base))
+}
+
 /// Read a file as UTF-8 text, returning `Err("binary")` for non-text files so the frontend
 /// can render an "is binary" placeholder. Distinct from `read_file` (used by the markdown
 /// editors), which is intentionally left unchanged.
@@ -246,6 +312,81 @@ pub async fn write_file(path: String, content: String) -> Result<(), String> {
     write_atomic(Path::new(&path), content.as_bytes())
 }
 
+/// Validate a single user-typed path *component* (a file or folder name). Rejects empty/whitespace,
+/// `.`/`..`, and any path separator or NUL — so a create/rename can never traverse out of its
+/// parent directory. Pure → unit-tested.
+fn is_valid_filename(name: &str) -> bool {
+    let trimmed = name.trim();
+    !trimmed.is_empty()
+        && trimmed != "."
+        && trimmed != ".."
+        && !trimmed.contains('/')
+        && !trimmed.contains('\\')
+        && !trimmed.contains('\0')
+}
+
+/// Create an empty file at `path`. Errors if it already exists (never clobber) or the basename is
+/// invalid. Creates missing parent dirs (like `write_atomic`). Returns the canonical path so the
+/// caller can open + select the file without a second round-trip.
+#[tauri::command]
+pub async fn create_file(path: String) -> Result<String, String> {
+    let p = Path::new(&path);
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if !is_valid_filename(name) {
+        return Err("Invalid file name".into());
+    }
+    if let Some(parent) = p.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create folder: {}", e))?;
+    }
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true) // atomic "fail if exists"
+        .open(p)
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+    fs::canonicalize(p)
+        .map(|c| c.to_string_lossy().to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Create a directory at `path`. Errors if it already exists or the basename is invalid. Returns
+/// the canonical path.
+#[tauri::command]
+pub async fn create_dir(path: String) -> Result<String, String> {
+    let p = Path::new(&path);
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if !is_valid_filename(name) {
+        return Err("Invalid folder name".into());
+    }
+    fs::create_dir(p).map_err(|e| format!("Failed to create folder: {}", e))?;
+    fs::canonicalize(p)
+        .map(|c| c.to_string_lossy().to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Rename/move `from` → `to` (works for files and folders). Errors if `to` already exists (no
+/// overwrite) or the new basename is invalid. Returns the canonical `to`.
+#[tauri::command]
+pub async fn rename_path(from: String, to: String) -> Result<String, String> {
+    let to_p = Path::new(&to);
+    let name = to_p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if !is_valid_filename(name) {
+        return Err("Invalid name".into());
+    }
+    if to_p.exists() {
+        return Err(format!("\"{}\" already exists", name));
+    }
+    fs::rename(&from, to_p).map_err(|e| format!("Failed to rename: {}", e))?;
+    fs::canonicalize(to_p)
+        .map(|c| c.to_string_lossy().to_string())
+        .map_err(|e| e.to_string())
+}
+
+/// Move `path` to the OS trash (recoverable — matches Finder/Zed). Works for files and folders.
+#[tauri::command]
+pub async fn delete_path(path: String) -> Result<(), String> {
+    trash::delete(&path).map_err(|e| format!("Failed to move to Trash: {}", e))
+}
+
 /// Sanitize a document name into a safe file basename (no extension): keep alphanumerics,
 /// `-` and `_`, replace anything else with `-`, and trim leading/trailing dashes. Falls back
 /// to `notehub-print` when the result is empty. This is what keeps the browser's "Save as PDF"
@@ -351,11 +492,13 @@ pub fn kill_terminal(state: State<TerminalState>, session_id: u32) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::{
-        canonicalize, find_window_for_workspace, is_directory, is_noise_dir, looks_binary,
-        print_basename, read_dir, read_file, read_text_file, sort_dir_entries, write_file,
+        canonicalize, create_dir, create_file, find_window_for_workspace, is_directory,
+        is_noise_dir, is_valid_filename, looks_binary, print_basename, read_dir, read_file,
+        read_text_file, rel_path, rename_path, sort_dir_entries, walk_files, write_file,
         DirEntryInfo,
     };
     use std::collections::HashMap;
+    use std::path::Path;
 
     #[tokio::test]
     async fn write_then_read_round_trips() {
@@ -568,5 +711,115 @@ mod tests {
                 .unwrap_err(),
             "binary"
         );
+    }
+
+    #[test]
+    fn rel_path_is_slash_joined_and_relative() {
+        let root = Path::new("/root");
+        assert_eq!(rel_path(root, Path::new("/root/a.md")), "a.md");
+        assert_eq!(rel_path(root, Path::new("/root/sub/b.md")), "sub/b.md");
+        // A path outside `root` falls back to the basename.
+        assert_eq!(rel_path(root, Path::new("/other/c.md")), "c.md");
+    }
+
+    #[test]
+    fn walk_files_respects_gitignore_and_skips_noise() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join(".gitignore"), b"ignored.md\nbuild/\n").unwrap();
+        std::fs::write(root.join("keep.md"), b"k").unwrap();
+        std::fs::write(root.join("ignored.md"), b"i").unwrap();
+        std::fs::create_dir(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub/nested.md"), b"n").unwrap();
+        std::fs::create_dir(root.join("build")).unwrap();
+        std::fs::write(root.join("build/out.md"), b"o").unwrap();
+        std::fs::create_dir(root.join(".git")).unwrap();
+        std::fs::write(root.join(".git/config"), b"c").unwrap();
+        std::fs::create_dir(root.join("node_modules")).unwrap();
+        std::fs::write(root.join("node_modules/dep.md"), b"d").unwrap();
+
+        let files = walk_files(root);
+        let rels: std::collections::HashSet<&str> = files.iter().map(|f| f.rel.as_str()).collect();
+
+        assert!(rels.contains("keep.md"));
+        assert!(rels.contains("sub/nested.md"));
+        assert!(rels.contains(".gitignore")); // dotfiles are kept
+        assert!(!rels.contains("ignored.md")); // gitignored file
+        assert!(!rels.iter().any(|r| r.starts_with("build/"))); // gitignored dir
+        assert!(!rels.iter().any(|r| r.starts_with(".git/"))); // noise dir
+        assert!(!rels.iter().any(|r| r.starts_with("node_modules/"))); // noise dir
+                                                                       // Names round-trip and there are no directory entries (basenames only on files).
+        assert!(files.iter().any(|f| f.name == "keep.md"));
+    }
+
+    #[test]
+    fn valid_filename_accepts_names_and_rejects_traversal() {
+        assert!(is_valid_filename("note.md"));
+        assert!(is_valid_filename("My Folder"));
+        assert!(is_valid_filename("日本語.md"));
+        assert!(!is_valid_filename(""));
+        assert!(!is_valid_filename("   "));
+        assert!(!is_valid_filename("."));
+        assert!(!is_valid_filename(".."));
+        assert!(!is_valid_filename("a/b"));
+        assert!(!is_valid_filename("a\\b"));
+        assert!(!is_valid_filename("a\0b"));
+    }
+
+    #[tokio::test]
+    async fn create_file_makes_empty_file_and_rejects_duplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("new.md");
+        let ps = p.to_str().unwrap().to_string();
+        create_file(ps.clone()).await.unwrap();
+        assert_eq!(read_file(ps.clone()).await.unwrap(), "");
+        assert!(create_file(ps).await.is_err()); // already exists
+    }
+
+    #[tokio::test]
+    async fn create_file_rejects_invalid_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = dir.path().join(".."); // file_name() is None → invalid
+        let err = create_file(bad.to_str().unwrap().to_string())
+            .await
+            .unwrap_err();
+        assert!(err.contains("Invalid"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn create_dir_makes_dir_and_rejects_duplicate() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("folder");
+        let ps = p.to_str().unwrap().to_string();
+        create_dir(ps.clone()).await.unwrap();
+        assert!(p.is_dir());
+        assert!(create_dir(ps).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn rename_path_moves_and_rejects_existing_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("a.md");
+        let to = dir.path().join("b.md");
+        std::fs::write(&from, b"x").unwrap();
+        rename_path(
+            from.to_str().unwrap().to_string(),
+            to.to_str().unwrap().to_string(),
+        )
+        .await
+        .unwrap();
+        assert!(!from.exists());
+        assert!(to.exists());
+
+        // Renaming another file onto the now-existing target errors (no overwrite).
+        let other = dir.path().join("c.md");
+        std::fs::write(&other, b"y").unwrap();
+        let err = rename_path(
+            other.to_str().unwrap().to_string(),
+            to.to_str().unwrap().to_string(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("already exists"), "got: {err}");
     }
 }

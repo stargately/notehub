@@ -149,6 +149,12 @@ export function useViewMode({
   }, [viewMode, activeFilePath, activeTabId, projectData, editorContent, flushSave, setTabs]);
 
   const cleanupTab = useCallback((tabId: string) => {
+    // Cancel any pending editor autosave so closing a tab (e.g. after deleting its file from the
+    // tree) can't fire a debounced write that re-creates the just-trashed file on disk.
+    if (editorSaveTimeoutRef.current) {
+      clearTimeout(editorSaveTimeoutRef.current);
+      editorSaveTimeoutRef.current = null;
+    }
     setViewModeMap((prev) => { const next = { ...prev }; delete next[tabId]; return next; });
     setEditorContentMap((prev) => { const next = { ...prev }; delete next[tabId]; return next; });
   }, []);

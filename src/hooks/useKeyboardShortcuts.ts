@@ -17,6 +17,8 @@ interface UseKeyboardShortcutsOptions {
   replaceFromRaw?: (raw: string) => boolean;
   flushPendingSnapshot?: () => void;
   toggleSidebar?: () => void;
+  openQuickOpen?: () => void;
+  openFile?: () => void;
 }
 
 export function useKeyboardShortcuts({
@@ -24,7 +26,7 @@ export function useKeyboardShortcuts({
   tabs, setActiveTabId, activeFilePath,
   setShowTerminal, setTerminalMounted,
   undoHistory, activeTabId, viewMode, replaceFromRaw,
-  flushPendingSnapshot, toggleSidebar,
+  flushPendingSnapshot, toggleSidebar, openQuickOpen, openFile,
 }: UseKeyboardShortcutsOptions) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -51,6 +53,19 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      // Cmd+P (or Ctrl+P) opens the quick-open file finder. Shift is reserved for printing
+      // a layout: qa / plain doc (handled inside QaLayout), so only plain Cmd+P opens it.
+      if (mod && !e.shiftKey && (e.key === "p" || e.key === "P") && openQuickOpen) {
+        e.preventDefault();
+        openQuickOpen();
+        return;
+      }
+      // Cmd+O (or Ctrl+O) opens a file via the OS dialog (mirrors the File menu's "Open File…").
+      if (mod && (e.key === "o" || e.key === "O") && openFile) {
+        e.preventDefault();
+        openFile();
+        return;
+      }
       // Cmd+B (or Ctrl+B) to toggle the file-tree sidebar
       if (mod && e.key === "b" && toggleSidebar) {
         e.preventDefault();
@@ -92,5 +107,5 @@ export function useKeyboardShortcuts({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [loadFile, handleSave, handleToggleViewMode, tabs, setActiveTabId, activeFilePath, setShowTerminal, setTerminalMounted, undoHistory, activeTabId, viewMode, replaceFromRaw, flushPendingSnapshot, toggleSidebar]);
+  }, [loadFile, handleSave, handleToggleViewMode, tabs, setActiveTabId, activeFilePath, setShowTerminal, setTerminalMounted, undoHistory, activeTabId, viewMode, replaceFromRaw, flushPendingSnapshot, toggleSidebar, openQuickOpen, openFile]);
 }

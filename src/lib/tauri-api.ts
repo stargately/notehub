@@ -1,4 +1,4 @@
-import type { DirEntry } from "./types";
+import type { DirEntry, FileEntry } from "./types";
 
 export const isTauri = !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
 
@@ -133,6 +133,48 @@ export async function readDir(path: string): Promise<DirEntry[]> {
   if (!isTauri) return [];
   const invoke = await getInvoke();
   return invoke<DirEntry[]>("read_dir", { path });
+}
+
+/** Recursively index every file under `root` for the quick-open finder (gitignore-aware in Rust). */
+export async function listWorkspaceFiles(root: string): Promise<FileEntry[]> {
+  if (!isTauri) return [];
+  const invoke = await getInvoke();
+  return invoke<FileEntry[]>("list_workspace_files", { root });
+}
+
+/** Create an empty file (errors if it exists); returns the canonical path. */
+export async function createFile(path: string): Promise<string> {
+  if (!isTauri) return path;
+  const invoke = await getInvoke();
+  return invoke<string>("create_file", { path });
+}
+
+/** Create a directory (errors if it exists); returns the canonical path. */
+export async function createDir(path: string): Promise<string> {
+  if (!isTauri) return path;
+  const invoke = await getInvoke();
+  return invoke<string>("create_dir", { path });
+}
+
+/** Rename/move a file or folder (errors if the target exists); returns the canonical new path. */
+export async function renamePath(from: string, to: string): Promise<string> {
+  if (!isTauri) return to;
+  const invoke = await getInvoke();
+  return invoke<string>("rename_path", { from, to });
+}
+
+/** Move a file or folder to the OS Trash (recoverable). */
+export async function deletePath(path: string): Promise<void> {
+  if (!isTauri) return;
+  const invoke = await getInvoke();
+  await invoke<void>("delete_path", { path });
+}
+
+/** Reveal a path in the OS file manager (Finder/Explorer), selecting the item. */
+export async function revealInFinder(path: string): Promise<void> {
+  if (!isTauri) return;
+  const { revealItemInDir } = await import("@tauri-apps/plugin-opener");
+  await revealItemInDir(path);
 }
 
 /** Read any file as text; rejects with "binary" for non-text files (images, blobs, …). */

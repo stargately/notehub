@@ -1,6 +1,6 @@
 import { useRef } from "react";
-import { FileTree } from "./FileTree";
-import { refreshAllDirs } from "../lib/tree-refresh";
+import type { RefObject } from "react";
+import { FileTree, type FileTreeHandle } from "./FileTree";
 
 interface SidebarProps {
   open: boolean;
@@ -10,6 +10,12 @@ interface SidebarProps {
   activeFilePath: string | null;
   onOpenFile: (path: string) => void;
   onOpenFolder: () => void;
+  /** Imperative handle to the file tree (owned by App so the top File menu can create at root). */
+  treeRef: RefObject<FileTreeHandle>;
+  /** A tree file/folder was renamed — sync any open tab pointing at it. */
+  onRenamed?: (oldPath: string, newPath: string) => void;
+  /** A tree file/folder was deleted — close any open tab pointing at it. */
+  onDeleted?: (path: string) => void;
 }
 
 /** Collapsible, resizable left panel hosting the workspace file tree. */
@@ -21,6 +27,9 @@ export function Sidebar({
   activeFilePath,
   onOpenFile,
   onOpenFolder,
+  treeRef,
+  onRenamed,
+  onDeleted,
 }: SidebarProps) {
   const startX = useRef(0);
   const startW = useRef(0);
@@ -60,42 +69,18 @@ export function Sidebar({
         >
           {rootName ?? "Explorer"}
         </span>
-        {workspaceRoot && (
-          <button
-            onClick={() => refreshAllDirs()}
-            className="nh-btn"
-            style={{ padding: "2px 6px" }}
-            title="Refresh tree"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 4v5h5M20 20v-5h-5M5 14a7 7 0 0012 3M19 10a7 7 0 00-12-3"
-              />
-            </svg>
-          </button>
-        )}
-        <button
-          onClick={onOpenFolder}
-          className="nh-btn"
-          style={{ padding: "2px 6px" }}
-          title="Open folder"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
-            />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v4m-2-2h4" />
-          </svg>
-        </button>
       </div>
 
       <div className="flex-1 overflow-auto">
         {workspaceRoot ? (
-          <FileTree root={workspaceRoot} activeFilePath={activeFilePath} onOpenFile={onOpenFile} />
+          <FileTree
+            ref={treeRef}
+            root={workspaceRoot}
+            activeFilePath={activeFilePath}
+            onOpenFile={onOpenFile}
+            onRenamed={onRenamed}
+            onDeleted={onDeleted}
+          />
         ) : (
           <div className="px-3 py-4">
             <button onClick={onOpenFolder} className="nh-btn-primary w-full">

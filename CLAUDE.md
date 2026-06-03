@@ -21,13 +21,18 @@ notehub/
 │   │   ├── TerminalPanel.tsx    # Terminal manager: tabs + side-by-side split panes
 │   │   ├── TerminalView.tsx     # A single terminal (one xterm + one PTY session)
 │   │   ├── MarkdownEditor.tsx  # Raw markdown/code editor (Monaco; `language` prop)
-│   │   ├── Sidebar.tsx         # Collapsible, resizable workspace file-tree panel
-│   │   ├── FileTree.tsx        # Lazy recursive file/folder tree
+│   │   ├── Sidebar.tsx         # Collapsible, resizable workspace file-tree panel (header = folder name)
+│   │   ├── FileTree.tsx        # Lazy recursive tree + right-click ops & inline create/rename
+│   │   ├── MenuBar.tsx         # Top File ▾ menu bar (New/Open/Quick Open/Save/Refresh via ContextMenu)
+│   │   ├── QuickOpen.tsx       # Cmd+P fuzzy file finder overlay (gitignore-aware index)
+│   │   ├── ContextMenu.tsx     # Shared floating menu (FileTree right-click, TabBar, top File menu)
+│   │   ├── ConfirmModal.tsx    # Generic confirm dialog (e.g. move-to-Trash)
 │   │   ├── RawFileEditor.tsx   # Non-md files: raw Monaco / inline image / binary placeholder
 │   │   ├── cell-renderers/     # AG Grid display components
 │   │   └── cell-editors/       # AG Grid edit components
 │   ├── hooks/
 │   │   ├── useProjectFile.ts   # File load/parse/save logic
+│   │   ├── useFileIndex.ts     # Lazy-cached recursive file index for Cmd+P (invalidate on change)
 │   │   ├── useWorkspace.ts     # Workspace folder root + sidebar open/width state
 │   │   ├── useRawFile.ts       # Load/autosave a non-md text file (shared FileSync)
 │   │   └── useFileWatcher.ts   # External change detection
@@ -37,7 +42,9 @@ notehub/
 │   │   ├── qa-parser.ts        # layout: qa marker parser (>>>/<<<)
 │   │   ├── file-kind.ts        # path → FileKind (markdown/raw/image) + Monaco language
 │   │   ├── tree.ts             # sortEntries (dirs first, case-insensitive)
-│   │   ├── tree-refresh.ts     # file-changed → re-read affected tree dirs (subscribeDir bus)
+│   │   ├── tree-refresh.ts     # file-changed → re-read tree dirs (subscribeDir/subscribeAll bus)
+│   │   ├── fuzzy.ts            # fzy-style fuzzy matcher for Cmd+P (pure, unit-tested)
+│   │   ├── recent-files.ts    # in-memory MRU for Cmd+P empty-query ordering
 │   │   ├── milkdown-mermaid.ts # Mermaid SVG node view for Milkdown
 │   │   ├── print.ts            # Render layout: qa to a print cheatsheet HTML
 │   │   └── tauri-api.ts        # Tauri IPC bridge
@@ -68,6 +75,8 @@ notehub/
 | Parsing | gray-matter (YAML frontmatter) |
 | Terminal | portable-pty 0.8 (Rust), @xterm/xterm 5 (frontend) |
 | File Watch | notify 7 + notify-debouncer-full 0.4 (Rust), 300ms coalescing (VS Code-style) |
+| File Index / Trash | `ignore` 0.4 (gitignore-aware Cmd+P walk), `trash` 5 (move-to-Trash delete) |
+| Fuzzy Search | `src/lib/fuzzy.ts` (dependency-free fzy-style matcher) |
 
 ## Commands
 
@@ -95,7 +104,7 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — pure modules under `src/lib/` and hooks under `src/hooks/`
   have unit tests in adjacent `__tests__/` dirs (`markdown-parser`, `qa-parser`, `print`, `tags`,
-  `types`, `file-kind`, `tree`, `tree-refresh`, `useFileSync`).
+  `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`, `recent-files`, `useFileSync`).
 - **Backend (`cargo test`)** — Rust unit tests live in `#[cfg(test)] mod tests` blocks inside each
   source file. The pattern is **"extract a pure helper, then test it"**: logic that used to be
   buried in thread closures or `AppHandle`-bound IO was factored into pure functions so it can be
@@ -107,9 +116,10 @@ npm run fmt:rust:check # cargo fmt -- --check
     `workspace_root`), plus `is_markdown_file` and `write_atomic` (tested against a `tempfile` temp
     dir; `tempfile` is a dev-dependency)
   - `commands.rs` → `print_basename` (PDF filename sanitization), `sort_dir_entries`,
-    `is_noise_dir`, `looks_binary`, `find_window_for_workspace`, plus the async `read_file` /
-    `write_file` / `read_dir` / `read_text_file` commands round-tripped through a temp dir
-    (`#[tokio::test]`)
+    `is_noise_dir`, `looks_binary`, `find_window_for_workspace`, `rel_path` + `walk_files` (the
+    gitignore-aware index walker, driven by a tempdir with a `.gitignore`), `is_valid_filename`,
+    plus the async `read_file` / `write_file` / `read_dir` / `read_text_file` / `create_file` /
+    `create_dir` / `rename_path` commands round-tripped through a temp dir (`#[tokio::test]`)
   - `terminal.rs` → the `write` / `resize` / `kill` error paths against an empty `TerminalState`
     (unknown `session_id` → error; `kill` is a no-op `Ok`) — exercised without spawning a real PTY
   When adding backend logic, prefer extracting the testable core into a pure function and add a
@@ -289,12 +299,16 @@ replace still work without it.
 - `Cmd+/` — Toggle raw markdown editor (formatted WYSIWYG ↔ raw for `layout: qa`)
 - `Cmd+F` — In the task view, focus the filter (Toolbar). In the `layout: qa` view, open the
   Find & replace bar (whole-document search; `Enter`/`Shift+Enter` navigate, `Esc` closes).
-- `Cmd+P` — Print the `layout: qa` doc (compact cheatsheet, letter size, two columns + diagrams).
-  WKWebView has no working `window.print()`, so `src/lib/print.ts` renders the markdown to a
-  self-contained HTML (via `marked` + light-theme mermaid) and the Rust `print_html` command
+- `Cmd+P` — Open the quick-open fuzzy file finder (`QuickOpen.tsx`) over the workspace. Handled in
+  the global `useKeyboardShortcuts` (gated on `!shiftKey` so it never steals Cmd+Shift+P print).
+- `Cmd+O` — Open a file via the OS dialog (mirrors the File menu's "Open File…"; `openFile: handleAddTab`).
+- `Cmd+Shift+P` — Print the `layout: qa` doc (compact cheatsheet, letter size, two columns +
+  diagrams). WKWebView has no working `window.print()`, so `src/lib/print.ts` renders the markdown
+  to a self-contained HTML (via `marked` + light-theme mermaid) and the Rust `print_html` command
   writes it to a temp file and opens it in the default browser to print. The doc `<title>` and
   the temp file's basename are both set to the source `.md` file name (no dir/extension), so
-  the browser's "Save as PDF" defaults to a name consistent with the file on disk.
+  the browser's "Save as PDF" defaults to a name consistent with the file on disk. The handler lives
+  in `QaLayout.tsx` (mounted only for `qa`/plain docs).
 - `Cmd+B` — Toggle the workspace file-tree sidebar
 - `Cmd+1-9` — Switch tabs
 - `Ctrl+`` `` — Toggle terminal
@@ -334,9 +348,10 @@ folder per window** — opening a *different* folder spawns a new OS window (VS 
 New Window"); re-opening the same folder focuses the window that already owns it. Opening a folder
 never disturbs existing tabs.
 
-Three entry points: the sidebar **Open Folder** button (`openFolderDialog`), **dragging a folder
+Entry points: the **File → Open Folder…** menu item (or the sidebar's empty-state **Open Folder**
+button) — both call `openFolderDialog` via `useWorkspace.openFolder`; **dragging a folder
 into the window** (`useTabManagement` drag-drop splits dirs from files via the `is_directory`
-command, routing dirs to `onOpenFolder`), and **dropping a folder on the Dock icon**
+command, routing dirs to `onOpenFolder`); and **dropping a folder on the Dock icon**
 (`RunEvent::Opened` → emits `open-folder`, which `useWorkspace` listens for). Dock folder drops
 need the `CFBundleDocumentTypes` entry in `src-tauri/Info.plist` (merged into the bundle) and only
 work in a packaged build. The workspace root is watched recursively (`startWatching`) so every
@@ -347,6 +362,17 @@ tree file live-reloads on external edits.
     lazy-loads children on expand). Sorted dirs-first/case-insensitive (`sort_dir_entries`);
     noise dirs (`.git`, `node_modules`, `.DS_Store` via `is_noise_dir`) are hidden. Dotfiles in
     general are *not* hidden.
+  - `list_workspace_files(root)` → `Vec<FileEntry { path, rel, name }>`, the **recursive** index
+    for the Cmd+P finder. Walks via the `ignore` crate (`walk_files`, `.require_git(false)` so
+    `.gitignore`/`.ignore` apply even outside a git repo, `.hidden(false)` to keep dotfiles), also
+    pruning `is_noise_dir`; files only, capped at `MAX_INDEX_FILES`. `rel_path` is the pure,
+    unit-tested `/`-joined relative path. **This is the one place the finder diverges from the tree**
+    (the tree's `read_dir` is *not* gitignore-aware).
+  - **File mutations** (all `Result<_, String>`, basename re-validated server-side via the pure
+    `is_valid_filename`): `create_file` (empty, `create_new` so it never clobbers; returns
+    canonical), `create_dir`, `rename_path` (errors if target exists), `delete_path` (moves to the
+    OS Trash via the `trash` crate). Reveal-in-Finder has **no Rust command** — the frontend calls
+    `@tauri-apps/plugin-opener`'s `revealItemInDir` (already permitted by `opener:default`).
   - `read_text_file(path)` → file text, or `Err("binary")` for non-text files (NUL-byte
     heuristic, `looks_binary`). Distinct from `read_file` (the markdown editors' path, unchanged).
   - `open_workspace_window(folder)` spawns a `workspace-{n}` window (or focuses an existing one
@@ -365,6 +391,32 @@ tree file live-reloads on external edits.
     `nh-sidebar-width`). `openFolder()` adopts the first folder or opens another window.
   - `Sidebar.tsx` + `FileTree.tsx`: resizable panel (drag handle mirrors `TerminalPanel`'s) and a
     lazy recursive tree; clicking a file calls `useTabManagement.openPath` (dedupes, focuses).
+  - **File management** (`FileTree.tsx`): right-clicking a row opens a `ContextMenu` (New File/
+    Folder on dirs, Rename, Delete, Reveal in Finder, Copy Path; right-click empty space → New at
+    root). Ops are shared with rows via a `FileTreeContext` (avoids prop-drilling through the
+    recursive `TreeNode`) plus a folder-handle registry so a create can auto-expand/optimistically
+    reload its target (the watcher reloads too — both idempotent). New/rename use an inline
+    `InlineInput` (basename pre-selected; commit keeps the input open on a name-conflict toast). A
+    new `.md` is created **empty** so it opens as a plain Milkdown doc (never `getDefaultProjectContent`,
+    which seeds `layout: todo`). Delete goes through a `ConfirmModal` → OS Trash. Root-level creates
+    are exposed via a `useImperativeHandle` on `FileTree` (`FileTreeHandle.newFileAtRoot/newFolderAtRoot`);
+    the ref is **owned by `App`** and passed down to `Sidebar` (`treeRef` prop) so the top File menu
+    can drive it. Tab sync: `FileTree` calls `onRenamed`/`onDeleted` →
+    `useTabManagement.renameTabPath` (repoints open tabs, incl. descendants of a renamed folder) /
+    `closeTabByPath` (closes tabs for a deleted path/subtree). `useViewMode.cleanupTab` cancels the
+    pending editor autosave so a delete can't be undone by a debounced write recreating the file.
+  - **Top File menu** (`MenuBar.tsx`): a thin in-app menu bar at the top of the window (rendered in
+    `App` above the sidebar+content row, `isTauri`-gated) with a single **File ▾** dropdown built on
+    the shared `ContextMenu` — New File, New Folder, Open File… (`⌘O`), Open Folder…, Quick Open
+    (`⌘P`), Save (`⌘S`), Refresh File Tree. It replaced the old sidebar-header icon buttons (the
+    sidebar header now shows just the folder name). New File/Folder are disabled without a workspace;
+    because they render an inline input in the tree, `App` first calls `openSidebar()` (added to
+    `useWorkspace`) and flushes the create via a `pendingNew` effect once `FileTree`'s ref is live.
+  - **Quick open** (`Cmd+P`, `QuickOpen.tsx`): a fuzzy file finder over the workspace. `useFileIndex`
+    lazily fetches `list_workspace_files` on open, caches it in a ref, and `invalidate()`s on any
+    `file-changed` (via `tree-refresh.subscribeAll`) or when the root changes. `fuzzy.ts` (fzy-style,
+    pure) ranks against each file's `rel`; an empty query lists open tabs then the in-memory MRU
+    (`recent-files.ts`, fed from `openPath`). Enter opens via `openPath`.
   - **Tree auto-refresh** (`tree-refresh.ts`, VS Code model): each loaded directory subscribes by
     its path to a shared `file-changed` listener and re-reads itself when something is
     created/deleted/renamed inside it. The Rust watcher uses `notify-debouncer-full` to *coalesce*

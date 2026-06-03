@@ -83,6 +83,16 @@ export interface DirEntry {
   is_dir: boolean;
 }
 
+/** One file in the recursive workspace index for the quick-open finder (matches Rust `FileEntry`). */
+export interface FileEntry {
+  /** Absolute path (used to open the file). */
+  path: string;
+  /** Path relative to the workspace root, `/`-separated — the fuzzy-match target. */
+  rel: string;
+  /** Basename (used for basename-boosted scoring). */
+  name: string;
+}
+
 export type ViewMode = "grid" | "editor";
 
 export type WeekFilter = "this_week" | "last_week" | null;

@@ -92,11 +92,12 @@ export function QaLayout({
     clearHighlights();
   };
 
-  // Cmd/Ctrl+P prints; Cmd/Ctrl+F opens the find bar (and suppresses the WKWebView
-  // native find, which doesn't work in the embedded webview anyway).
+  // Cmd/Ctrl+Shift+P prints (plain Cmd+P is the global quick-open finder); Cmd/Ctrl+F opens
+  // the find bar (and suppresses the WKWebView native find, which doesn't work in the embedded
+  // webview anyway).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "p" || e.key === "P")) {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "p" || e.key === "P")) {
         e.preventDefault();
         printRef.current();
       } else if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {

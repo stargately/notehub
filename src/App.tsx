@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useProjectFile } from "./hooks/useProjectFile";
 import { useFileWatcher } from "./hooks/useFileWatcher";
 import { useFileSync } from "./hooks/useFileSync";
@@ -6,12 +6,14 @@ import { useDarkMode } from "./hooks/useDarkMode";
 import { useClickOutside } from "./hooks/useClickOutside";
 import { useTabManagement } from "./hooks/useTabManagement";
 import { useWorkspace } from "./hooks/useWorkspace";
+import { useFileIndex } from "./hooks/useFileIndex";
 import { useViewMode } from "./hooks/useViewMode";
 import { useTaskFilters } from "./hooks/useTaskFilters";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { useUndoHistory } from "./hooks/useUndoHistory";
 import { useAutoUpdate } from "./hooks/useAutoUpdate";
 import { isTauri } from "./lib/tauri-api";
+import { refreshAllDirs } from "./lib/tree-refresh";
 import { serializeProjectMd } from "./lib/markdown-parser";
 import type { ProjectData } from "./lib/types";
 import type { WeekFilter } from "./lib/types";
@@ -25,6 +27,9 @@ import { TerminalPanel } from "./components/TerminalPanel";
 import { MarkdownEditor } from "./components/MarkdownEditor";
 import { RawFileEditor } from "./components/RawFileEditor";
 import { Sidebar } from "./components/Sidebar";
+import { MenuBar } from "./components/MenuBar";
+import type { FileTreeHandle } from "./components/FileTree";
+import { QuickOpen } from "./components/QuickOpen";
 import { QaLayout } from "./components/QaLayout";
 import { deriveBaseName } from "./lib/print";
 import { ConflictModal } from "./components/ConflictModal";
@@ -41,6 +46,7 @@ function App() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalMounted, setTerminalMounted] = useState(false);
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false);
 
   const { darkMode, themeMode, cycleThemeMode } = useDarkMode();
   const undoHistory = useUndoHistory();
@@ -51,13 +57,37 @@ function App() {
 
   const {
     workspaceRoot, ready: workspaceReady,
-    sidebarOpen, toggleSidebar, sidebarWidth, setSidebarWidth, openFolder, setWorkspace,
+    sidebarOpen, toggleSidebar, openSidebar, sidebarWidth, setSidebarWidth, openFolder, setWorkspace,
   } = useWorkspace();
+
+  const { ensureIndex } = useFileIndex(workspaceRoot);
+
+  // Imperative handle to the file tree, owned here so the top File menu can create at the root.
+  const fileTreeRef = useRef<FileTreeHandle>(null);
+  // New File/New Folder from the menu render an inline input in the tree, so the sidebar must be
+  // open and FileTree mounted. We open the sidebar, then flush the action once the ref is live.
+  const [pendingNew, setPendingNew] = useState<"file" | "folder" | null>(null);
+  const triggerNew = useCallback(
+    (kind: "file" | "folder") => {
+      openSidebar();
+      setPendingNew(kind);
+    },
+    [openSidebar],
+  );
+  useEffect(() => {
+    if (!pendingNew || !sidebarOpen) return;
+    const handle = fileTreeRef.current;
+    if (!handle) return; // FileTree not mounted yet (no workspace) — leave pending
+    if (pendingNew === "file") handle.newFileAtRoot();
+    else handle.newFolderAtRoot();
+    setPendingNew(null);
+  }, [pendingNew, sidebarOpen]);
 
   const {
     tabs, setTabs, activeTabId, setActiveTabId, initialized,
     activeFilePath, terminalCwd,
     handleAddTab, handleCloseTab, handleSelectTab, openPath,
+    renameTabPath, closeTabByPath,
   } = useTabManagement({
     workspaceRoot,
     workspaceReady,
@@ -188,6 +218,8 @@ function App() {
     setShowTerminal, setTerminalMounted,
     undoHistory, activeTabId, viewMode, replaceFromRaw,
     flushPendingSnapshot, toggleSidebar,
+    openQuickOpen: () => setQuickOpenOpen(true),
+    openFile: handleAddTab,
   });
 
   const isQa = projectData?.meta.layout === "qa";
@@ -268,6 +300,28 @@ function App() {
         onKeepDisk={() => fileSync.resolveKeepDisk(loadFile)}
         onKeepMine={() => fileSync.resolveKeepMine()}
       />
+      <QuickOpen
+        open={quickOpenOpen}
+        onClose={() => setQuickOpenOpen(false)}
+        workspaceRoot={workspaceRoot}
+        tabs={tabs}
+        ensureIndex={ensureIndex}
+        onOpenFile={openPath}
+        onOpenFolder={openFolder}
+      />
+      {isTauri && (
+        <MenuBar
+          workspaceRoot={workspaceRoot}
+          canSave={tabs.length > 0}
+          onNewFile={() => triggerNew("file")}
+          onNewFolder={() => triggerNew("folder")}
+          onOpenFile={handleAddTab}
+          onOpenFolder={openFolder}
+          onQuickOpen={() => setQuickOpenOpen(true)}
+          onSave={onSave}
+          onRefresh={refreshAllDirs}
+        />
+      )}
       <div className="flex-1 flex flex-row overflow-hidden">
         {isTauri && (
           <Sidebar
@@ -278,6 +332,9 @@ function App() {
             activeFilePath={activeFilePath}
             onOpenFile={openPath}
             onOpenFolder={openFolder}
+            treeRef={fileTreeRef}
+            onRenamed={renameTabPath}
+            onDeleted={closeTabByPath}
           />
         )}
         <div className="flex-1 flex flex-col overflow-hidden">

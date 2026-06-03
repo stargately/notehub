@@ -104,6 +104,7 @@ export function useWorkspace() {
 
   const setSidebarWidth = useCallback((w: number) => setWidthState(clampWidth(w)), []);
   const toggleSidebar = useCallback(() => setSidebarOpen((p) => !p), []);
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
 
   /**
    * Open `path` as a workspace. Adopts it in this window if there's no root yet (and the
@@ -149,6 +150,7 @@ export function useWorkspace() {
     ready,
     sidebarOpen,
     toggleSidebar,
+    openSidebar,
     sidebarWidth,
     setSidebarWidth,
     openFolder,

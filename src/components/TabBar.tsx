@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import type { TabInfo } from "../lib/types";
+import { ContextMenu } from "./ContextMenu";
 
-interface ContextMenu {
+interface TabContextMenu {
   x: number;
   y: number;
   tabId: string;
@@ -22,33 +23,16 @@ export function TabBar({
   onCloseTab,
   onAddTab,
 }: TabBarProps) {
-  const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
+  const [contextMenu, setContextMenu] = useState<TabContextMenu | null>(null);
 
   const closeMenu = useCallback(() => setContextMenu(null), []);
-
-  // Close on outside click, Escape, or scroll
-  useEffect(() => {
-    if (!contextMenu) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeMenu();
-    };
-    document.addEventListener("click", closeMenu);
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("scroll", closeMenu, true);
-    return () => {
-      document.removeEventListener("click", closeMenu);
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("scroll", closeMenu, true);
-    };
-  }, [contextMenu, closeMenu]);
 
   const handleCopyPath = useCallback(() => {
     const tab = tabs.find((t) => t.id === contextMenu?.tabId);
     if (tab?.filePath) {
       navigator.clipboard.writeText(tab.filePath);
     }
-    closeMenu();
-  }, [contextMenu, tabs, closeMenu]);
+  }, [contextMenu, tabs]);
 
   return (
     <div
@@ -126,43 +110,21 @@ export function TabBar({
         </svg>
       </button>
 
-      {contextMenu && (() => {
-        const tab = tabs.find((t) => t.id === contextMenu.tabId);
-        const disabled = !tab?.filePath;
-        return (
-          <div
-            className="fixed z-50 py-1 min-w-[220px] rounded-lg nh-fade-in"
-            style={{
-              left: contextMenu.x,
-              top: contextMenu.y,
-              background: "var(--nh-bg-elevated)",
-              border: "1px solid var(--nh-border)",
-              boxShadow: "var(--nh-shadow-lg)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between transition-colors ${
-                disabled ? "opacity-40 cursor-default" : ""
-              }`}
-              style={{ color: disabled ? "var(--nh-text-tertiary)" : "var(--nh-text)" }}
-              onMouseEnter={(e) => {
-                if (!disabled) e.currentTarget.style.background = "var(--nh-bg-sunken)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "transparent";
-              }}
-              onClick={disabled ? undefined : handleCopyPath}
-              disabled={disabled}
-            >
-              <span>Copy Path/Reference...</span>
-              <span style={{ color: "var(--nh-text-tertiary)" }} className="ml-4 text-[10px]">
-                ⌘⇧C
-              </span>
-            </button>
-          </div>
-        );
-      })()}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={closeMenu}
+          items={[
+            {
+              label: "Copy Path/Reference...",
+              shortcut: "⌘⇧C",
+              disabled: !tabs.find((t) => t.id === contextMenu.tabId)?.filePath,
+              onClick: handleCopyPath,
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }
