@@ -30,11 +30,7 @@ pub fn get_project_file_paths(state: State<AppState>) -> Result<InitialSessionPa
 }
 
 #[tauri::command]
-pub fn save_session(
-    app: AppHandle,
-    paths: Vec<String>,
-    active_index: usize,
-) -> Result<(), String> {
+pub fn save_session(app: AppHandle, paths: Vec<String>, active_index: usize) -> Result<(), String> {
     let path = session_file_path(&app)?;
     let payload = serde_json::json!({
         "paths": paths,
@@ -67,7 +63,13 @@ fn print_basename(name: Option<String>) -> String {
     let base: String = name
         .unwrap_or_default()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string();
@@ -159,7 +161,39 @@ pub fn kill_terminal(state: State<TerminalState>, session_id: u32) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::print_basename;
+    use super::{print_basename, read_file, write_file};
+
+    #[tokio::test]
+    async fn write_then_read_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("note.md");
+        let path_str = path.to_str().unwrap().to_string();
+
+        write_file(path_str.clone(), "# hello".into())
+            .await
+            .unwrap();
+        assert_eq!(read_file(path_str).await.unwrap(), "# hello");
+    }
+
+    #[tokio::test]
+    async fn write_file_creates_missing_parent_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested/deeper/note.md");
+        let path_str = path.to_str().unwrap().to_string();
+
+        write_file(path_str.clone(), "body".into()).await.unwrap();
+        assert_eq!(read_file(path_str).await.unwrap(), "body");
+    }
+
+    #[tokio::test]
+    async fn read_missing_file_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("ghost.md");
+        let err = read_file(missing.to_str().unwrap().to_string())
+            .await
+            .unwrap_err();
+        assert!(err.contains("Failed to read"), "got: {err}");
+    }
 
     #[test]
     fn keeps_plain_names_unchanged() {

@@ -70,7 +70,44 @@ npm run build         # TypeScript + Vite production build
 npm run build:tauri   # Build native app (creates installer)
 npm run preview       # Preview production build
 npm run kill          # Kill port 1420
+npm test              # Run BOTH suites: vitest (JS) then cargo test (Rust)
+npm run test:js       # Frontend unit tests only (vitest)
+npm run test:rust     # Rust backend tests only (cd src-tauri && cargo test)
+npm run test:watch    # Vitest in watch mode
+npm run lint:rust     # cargo clippy -- -D warnings
+npm run fmt:rust:check # cargo fmt -- --check
 ```
+
+> `npm test` (a.k.a. `yarn test`) is the single command that validates the whole repo — it runs
+> the frontend `vitest` suite first (fail-fast) and then the Rust `cargo test` suite. CI
+> (`.github/workflows/ci.yml`) runs the same checks plus `clippy` and `fmt --check` on every push
+> and PR.
+
+## Testing
+
+- **Frontend (`vitest`, jsdom)** — pure modules under `src/lib/` and hooks under `src/hooks/`
+  have unit tests in adjacent `__tests__/` dirs (`markdown-parser`, `qa-parser`, `print`, `tags`,
+  `types`, `useFileSync`).
+- **Backend (`cargo test`)** — Rust unit tests live in `#[cfg(test)] mod tests` blocks inside each
+  source file. The pattern is **"extract a pure helper, then test it"**: logic that used to be
+  buried in thread closures or `AppHandle`-bound IO was factored into pure functions so it can be
+  tested headlessly (no PTY, no Tauri runtime, no real filesystem watcher):
+  - `terminal.rs` → `drain_utf8` (the streaming UTF-8 chunk decoder for PTY output)
+  - `watcher.rs` → `should_skip_path`, `event_kind_label`, `is_debounced` (file-watch filtering +
+    debounce)
+  - `lib.rs` → `reconcile_session` (session-restore reconciliation), plus `is_markdown_file` and
+    `write_atomic` (tested against a `tempfile` temp dir; `tempfile` is a dev-dependency)
+  - `commands.rs` → `print_basename` (PDF filename sanitization), plus the async `read_file` /
+    `write_file` commands round-tripped through a temp dir (`#[tokio::test]`)
+  - `terminal.rs` → the `write` / `resize` / `kill` error paths against an empty `TerminalState`
+    (unknown `session_id` → error; `kill` is a no-op `Ok`) — exercised without spawning a real PTY
+  When adding backend logic, prefer extracting the testable core into a pure function and add a
+  test next to it — keep the IO/threading shell thin.
+- **Coverage** — `npm run test:rust:coverage` (`cargo llvm-cov --summary-only`) reports line/region
+  coverage; CI prints the same summary (informational, non-gating). The covered half is the pure
+  logic above; the uncovered half is the deliberately-untested IO/runtime shell (`run()`, PTY
+  `spawn`, the live watcher loop, macOS `recent_docs`, and the thin `#[tauri::command]` wrappers),
+  which would need a real PTY / Tauri harness to exercise.
 
 ## Ports
 

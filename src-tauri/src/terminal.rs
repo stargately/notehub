@@ -42,6 +42,38 @@ pub struct TerminalExitPayload {
     pub session_id: u32,
 }
 
+/// Drain the largest decodable prefix from a stream of PTY bytes, mutating `pending` to keep
+/// only the trailing bytes that still need more input.
+///
+/// A multi-byte UTF-8 char can be split across `read()` chunks; decoding the partial bytes
+/// would render as `�`. So we emit the largest valid UTF-8 prefix and retain the incomplete
+/// tail for the next read. A valid UTF-8 char is at most 4 bytes, so if more than 4 bytes
+/// remain after taking the valid prefix they are genuinely invalid — flush them lossily as a
+/// safety valve rather than stall the stream. Returns `None` when there is nothing to emit yet.
+fn drain_utf8(pending: &mut Vec<u8>) -> Option<String> {
+    let mut out = String::new();
+
+    let valid_len = match std::str::from_utf8(pending) {
+        Ok(s) => s.len(),
+        Err(e) => e.valid_up_to(),
+    };
+    if valid_len > 0 {
+        out.push_str(&String::from_utf8_lossy(&pending[..valid_len]));
+        pending.drain(..valid_len);
+    }
+
+    if pending.len() > 4 {
+        out.push_str(&String::from_utf8_lossy(pending));
+        pending.clear();
+    }
+
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
+}
+
 pub fn spawn(
     state: &TerminalState,
     app_handle: tauri::AppHandle,
@@ -63,8 +95,8 @@ pub fn spawn(
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
     let mut cmd = CommandBuilder::new(&shell);
     cmd.arg("-l"); // login shell
-    // Advertise a color-capable terminal. A Tauri app launched from Finder/Dock
-    // inherits no TERM, so the shell and tools would otherwise suppress color.
+                   // Advertise a color-capable terminal. A Tauri app launched from Finder/Dock
+                   // inherits no TERM, so the shell and tools would otherwise suppress color.
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
 
@@ -118,14 +150,7 @@ pub fn spawn(
                 Ok(0) => break,
                 Ok(n) => {
                     pending.extend_from_slice(&buf[..n]);
-                    // Emit the largest valid UTF-8 prefix; keep the trailing
-                    // incomplete bytes for the next read.
-                    let valid_len = match std::str::from_utf8(&pending) {
-                        Ok(s) => s.len(),
-                        Err(e) => e.valid_up_to(),
-                    };
-                    if valid_len > 0 {
-                        let data = String::from_utf8_lossy(&pending[..valid_len]).to_string();
+                    if let Some(data) = drain_utf8(&mut pending) {
                         let _ = handle.emit(
                             "terminal-output",
                             TerminalOutputPayload {
@@ -133,21 +158,6 @@ pub fn spawn(
                                 data,
                             },
                         );
-                        pending.drain(..valid_len);
-                    }
-                    // Safety valve: a valid UTF-8 char is at most 4 bytes, so if
-                    // leftover bytes exceed that they're genuinely invalid —
-                    // flush lossily rather than stall.
-                    if pending.len() > 4 {
-                        let data = String::from_utf8_lossy(&pending).to_string();
-                        let _ = handle.emit(
-                            "terminal-output",
-                            TerminalOutputPayload {
-                                session_id: sid,
-                                data,
-                            },
-                        );
-                        pending.clear();
                     }
                 }
                 Err(_) => break,
@@ -198,4 +208,74 @@ pub fn kill(state: &TerminalState, session_id: u32) -> Result<(), String> {
         let _ = session.child.kill();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{drain_utf8, kill, resize, write, TerminalState};
+
+    #[test]
+    fn write_to_unknown_session_errors() {
+        let state = TerminalState::new();
+        let err = write(&state, 99, "data").unwrap_err();
+        assert!(err.contains("No terminal session 99"), "got: {err}");
+    }
+
+    #[test]
+    fn resize_unknown_session_errors() {
+        let state = TerminalState::new();
+        let err = resize(&state, 99, 80, 24).unwrap_err();
+        assert!(err.contains("No terminal session 99"), "got: {err}");
+    }
+
+    #[test]
+    fn kill_unknown_session_is_a_noop_ok() {
+        let state = TerminalState::new();
+        // Killing a session that was never spawned must not error.
+        assert!(kill(&state, 99).is_ok());
+    }
+
+    #[test]
+    fn passes_ascii_through_and_empties_buffer() {
+        let mut pending = b"hello world".to_vec();
+        assert_eq!(drain_utf8(&mut pending).as_deref(), Some("hello world"));
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn returns_none_for_empty_buffer() {
+        let mut pending: Vec<u8> = Vec::new();
+        assert_eq!(drain_utf8(&mut pending), None);
+    }
+
+    #[test]
+    fn reassembles_a_multibyte_char_split_across_chunks() {
+        // "😀" is F0 9F 98 80 — feed it two bytes at a time.
+        let mut pending = vec![0xF0, 0x9F];
+        // Only an incomplete prefix so far: nothing decodable, bytes retained.
+        assert_eq!(drain_utf8(&mut pending), None);
+        assert_eq!(pending, vec![0xF0, 0x9F]);
+
+        pending.extend_from_slice(&[0x98, 0x80]);
+        assert_eq!(drain_utf8(&mut pending).as_deref(), Some("😀"));
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn emits_valid_prefix_and_retains_dangling_continuation() {
+        // "A" followed by the first byte of a 3-byte char (E2 ...).
+        let mut pending = vec![0x41, 0xE2];
+        assert_eq!(drain_utf8(&mut pending).as_deref(), Some("A"));
+        // The lone lead byte is below the 4-byte safety valve, so it is retained.
+        assert_eq!(pending, vec![0xE2]);
+    }
+
+    #[test]
+    fn safety_valve_flushes_invalid_bytes_past_four() {
+        // Five invalid bytes can never form a valid char — flush lossily, don't stall.
+        let mut pending = vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+        let out = drain_utf8(&mut pending).expect("safety valve should emit");
+        assert_eq!(out.chars().filter(|&c| c == '\u{FFFD}').count(), 5);
+        assert!(pending.is_empty());
+    }
 }

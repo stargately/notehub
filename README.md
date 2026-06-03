@@ -11,6 +11,18 @@ npm run dev:tauri     # Full desktop app
 npm run build:tauri   # Build native installer
 ```
 
+## Testing
+
+```bash
+npm test              # Run everything: vitest (frontend) + cargo test (Rust backend)
+npm run test:js       # Frontend unit tests only
+npm run test:rust     # Rust backend tests only
+```
+
+`npm test` runs the frontend `vitest` suite and the Rust `cargo test` suite. The same checks —
+plus `cargo clippy` and `cargo fmt --check` — run in CI (`.github/workflows/ci.yml`) on every
+push and pull request.
+
 ## Document Layouts
 
 The `layout` field in a file's frontmatter chooses the view:
