@@ -141,9 +141,9 @@ export async function openUrl(url: string): Promise<void> {
 }
 
 /** Write an HTML doc to a temp file and open it in the default browser (for printing). */
-export async function printHtml(html: string): Promise<void> {
+export async function printHtml(html: string, name?: string): Promise<void> {
   const invoke = await getInvoke();
-  await invoke<void>("print_html", { html });
+  await invoke<void>("print_html", { html, name: name ?? null });
 }
 
 export async function writeFile(path: string, content: string): Promise<void> {

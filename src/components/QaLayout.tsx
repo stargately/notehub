@@ -20,6 +20,8 @@ interface QaLayoutProps {
   themeMode: ThemeMode;
   darkMode: boolean;
   projectName?: string;
+  /** Base file name (no dir, no `.md`) — used as the print/PDF document title. */
+  fileName?: string;
 }
 
 interface ParsedState {
@@ -38,7 +40,7 @@ function parse(content: string): ParsedState {
  * two-column row (question | answer). Edits round-trip back to raw markdown.
  */
 export function QaLayout({
-  content, onChange, onToggleEditor, onCycleTheme, themeMode, darkMode, projectName,
+  content, onChange, onToggleEditor, onCycleTheme, themeMode, darkMode, projectName, fileName,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
   // Bumped only on EXTERNAL content changes, to force a remount of the (mount-once) editors.
@@ -50,7 +52,9 @@ export function QaLayout({
 
   // Latest content/title in a ref so the print shortcut always uses current values.
   const printRef = useRef<() => void>(() => {});
-  printRef.current = () => void printQaDocument(content, projectName || "Untitled");
+  // The browser's "Save as PDF" defaults the file name to the document <title>, so prefer
+  // the actual file name (consistent with the .md on disk) over the YAML project name.
+  printRef.current = () => void printQaDocument(content, fileName || projectName || "Untitled");
 
   // Cmd/Ctrl+P renders the doc to a standalone cheatsheet and opens it for printing
   // (WKWebView can't print the live view, so we never call window.print() on it directly).

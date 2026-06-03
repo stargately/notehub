@@ -75,7 +75,18 @@ const PRINT_CSS = `
   img { max-width: 100%; }
 `;
 
-function buildHtml(title: string, inner: string): string {
+/**
+ * Derive a clean document/print title from a file path: drop the directory and the trailing
+ * `.md` extension. Returns undefined for an empty/null path (callers fall back to other names).
+ * This is what makes the "Save as PDF" name consistent with the file on disk.
+ */
+export function deriveBaseName(filePath: string | null | undefined): string | undefined {
+  if (!filePath) return undefined;
+  const base = filePath.replace(/^.*\//, "").replace(/\.md$/i, "");
+  return base || undefined;
+}
+
+export function buildHtml(title: string, inner: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -115,7 +126,7 @@ export async function printQaDocument(content: string, title: string): Promise<v
   if (isTauri) {
     // WKWebView can't print the live view; hand the HTML to Rust, which writes a temp
     // file and opens it in the default browser (bypassing the JS opener scope).
-    await printHtml(doc);
+    await printHtml(doc, title);
   } else {
     const w = window.open("", "_blank");
     if (w) {

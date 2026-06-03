@@ -23,6 +23,7 @@ import { ThemeIcon } from "./components/ThemeIcon";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { MarkdownEditor } from "./components/MarkdownEditor";
 import { QaLayout } from "./components/QaLayout";
+import { deriveBaseName } from "./lib/print";
 import { ConflictModal } from "./components/ConflictModal";
 import { Toaster } from "sonner";
 
@@ -302,6 +303,7 @@ function App() {
           themeMode={themeMode}
           darkMode={darkMode}
           projectName={projectData?.meta.project}
+          fileName={deriveBaseName(filePath)}
         />
       ) : (
         <>

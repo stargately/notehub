@@ -59,20 +59,47 @@ pub async fn write_file(path: String, content: String) -> Result<(), String> {
     write_atomic(Path::new(&path), content.as_bytes())
 }
 
+/// Sanitize a document name into a safe file basename (no extension): keep alphanumerics,
+/// `-` and `_`, replace anything else with `-`, and trim leading/trailing dashes. Falls back
+/// to `notehub-print` when the result is empty. This is what keeps the browser's "Save as PDF"
+/// name consistent with the source `.md` file.
+fn print_basename(name: Option<String>) -> String {
+    let base: String = name
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    if base.is_empty() {
+        "notehub-print".to_string()
+    } else {
+        base
+    }
+}
+
 /// Write a self-contained HTML document to a temp file and open it in the system default
 /// browser. Used for printing (WKWebView does not implement JS `window.print()`).
 #[tauri::command]
-pub async fn print_html(app: AppHandle, html: String) -> Result<(), String> {
+pub async fn print_html(app: AppHandle, html: String, name: Option<String>) -> Result<(), String> {
     use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
     use tauri_plugin_opener::OpenerExt;
 
+    // Name the temp file after the document so the browser's "Save as PDF" defaults to a
+    // file name consistent with the source .md (it falls back to the page file name when a
+    // viewer ignores the HTML <title>). De-duplicate with a timestamped subdir so concurrent
+    // prints don't collide while the file basename stays exactly the document name.
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    let mut path = std::env::temp_dir();
-    path.push(format!("notehub-print-{ts}.html"));
+    let file_name = format!("{}.html", print_basename(name));
+    let mut dir = std::env::temp_dir();
+    dir.push(format!("notehub-print-{ts}"));
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let mut path = dir;
+    path.push(file_name);
 
     let mut file = fs::File::create(&path).map_err(|e| e.to_string())?;
     file.write_all(html.as_bytes()).map_err(|e| e.to_string())?;
@@ -128,4 +155,39 @@ pub fn resize_terminal(
 #[tauri::command]
 pub fn kill_terminal(state: State<TerminalState>, session_id: u32) -> Result<(), String> {
     crate::terminal::kill(&state, session_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::print_basename;
+
+    #[test]
+    fn keeps_plain_names_unchanged() {
+        assert_eq!(print_basename(Some("my-notes".into())), "my-notes");
+        assert_eq!(print_basename(Some("Chapter_01".into())), "Chapter_01");
+    }
+
+    #[test]
+    fn replaces_unsafe_chars_with_dash() {
+        assert_eq!(print_basename(Some("a/b c:d".into())), "a-b-c-d");
+        assert_eq!(print_basename(Some("notes (final)".into())), "notes--final");
+    }
+
+    #[test]
+    fn trims_leading_and_trailing_dashes() {
+        assert_eq!(print_basename(Some("  spaced  ".into())), "spaced");
+        assert_eq!(print_basename(Some("///x///".into())), "x");
+    }
+
+    #[test]
+    fn falls_back_when_empty_or_all_unsafe() {
+        assert_eq!(print_basename(None), "notehub-print");
+        assert_eq!(print_basename(Some("".into())), "notehub-print");
+        assert_eq!(print_basename(Some("///".into())), "notehub-print");
+    }
+
+    #[test]
+    fn preserves_unicode_alphanumerics() {
+        assert_eq!(print_basename(Some("日本語".into())), "日本語");
+    }
 }

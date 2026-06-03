@@ -195,7 +195,9 @@ same debounced `writeFile` path used by the Monaco editor (`useViewMode.handleEd
 - `Cmd+P` — Print the `layout: qa` doc (compact cheatsheet, letter size, two columns + diagrams).
   WKWebView has no working `window.print()`, so `src/lib/print.ts` renders the markdown to a
   self-contained HTML (via `marked` + light-theme mermaid) and the Rust `print_html` command
-  writes it to a temp file and opens it in the default browser to print.
+  writes it to a temp file and opens it in the default browser to print. The doc `<title>` and
+  the temp file's basename are both set to the source `.md` file name (no dir/extension), so
+  the browser's "Save as PDF" defaults to a name consistent with the file on disk.
 - `Cmd+1-9` — Switch tabs
 - `Ctrl+`` `` — Toggle terminal
 - `Escape` — Close detail drawer

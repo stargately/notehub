@@ -95,7 +95,8 @@ edit the raw fence via the raw editor. Tables render inline too.
 
 Press `Cmd+/` to switch between the formatted editor and the raw markdown code editor.
 Press `Cmd+P` (or the **Print** button) to print the document as a compact, cheatsheet-style
-handout on letter-size pages — the two-column layout and mermaid diagrams are preserved.
+handout on letter-size pages — the two-column layout and mermaid diagrams are preserved. When
+you "Save as PDF", the default file name matches the source markdown file.
 
 ## Custom Fields
 
