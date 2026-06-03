@@ -41,8 +41,25 @@ export function TerminalPanel({ visible, cwd, onClose }: TerminalPanelProps) {
         foreground: "#d4d4d4",
         cursor: "#d4d4d4",
         selectionBackground: "#264f78",
+        // Full 16-color ANSI palette (VS Code Dark+) so colored output matches
+        // a real terminal.
+        black: "#000000",
+        red: "#cd3131",
+        green: "#0dbc79",
+        yellow: "#e5e510",
+        blue: "#2472c8",
+        magenta: "#bc3fbc",
+        cyan: "#11a8cd",
+        white: "#e5e5e5",
+        brightBlack: "#666666",
+        brightRed: "#f14c4c",
+        brightGreen: "#23d18b",
+        brightYellow: "#f5f543",
+        brightBlue: "#3b8eea",
+        brightMagenta: "#d670d6",
+        brightCyan: "#29b8db",
+        brightWhite: "#e5e5e5",
       },
-      convertEol: true,
       scrollback: 5000,
     });
     const fitAddon = new FitAddon();

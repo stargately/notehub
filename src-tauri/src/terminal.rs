@@ -63,6 +63,10 @@ pub fn spawn(
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
     let mut cmd = CommandBuilder::new(&shell);
     cmd.arg("-l"); // login shell
+    // Advertise a color-capable terminal. A Tauri app launched from Finder/Dock
+    // inherits no TERM, so the shell and tools would otherwise suppress color.
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
 
     if let Some(ref dir) = cwd {
         cmd.cwd(dir);
@@ -104,19 +108,47 @@ pub fn spawn(
     let handle = app_handle.clone();
     let sid = session_id;
     std::thread::spawn(move || {
+        // Accumulate bytes so a multi-byte UTF-8 char split across read() chunks
+        // isn't decoded as `�`. ANSI escape codes are ASCII and always survive;
+        // this protects box-drawing glyphs, powerline symbols, emoji, accents.
+        let mut pending: Vec<u8> = Vec::new();
         let mut buf = [0u8; 4096];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    let data = String::from_utf8_lossy(&buf[..n]).to_string();
-                    let _ = handle.emit(
-                        "terminal-output",
-                        TerminalOutputPayload {
-                            session_id: sid,
-                            data,
-                        },
-                    );
+                    pending.extend_from_slice(&buf[..n]);
+                    // Emit the largest valid UTF-8 prefix; keep the trailing
+                    // incomplete bytes for the next read.
+                    let valid_len = match std::str::from_utf8(&pending) {
+                        Ok(s) => s.len(),
+                        Err(e) => e.valid_up_to(),
+                    };
+                    if valid_len > 0 {
+                        let data = String::from_utf8_lossy(&pending[..valid_len]).to_string();
+                        let _ = handle.emit(
+                            "terminal-output",
+                            TerminalOutputPayload {
+                                session_id: sid,
+                                data,
+                            },
+                        );
+                        pending.drain(..valid_len);
+                    }
+                    // Safety valve: a valid UTF-8 char is at most 4 bytes, so if
+                    // leftover bytes exceed that they're genuinely invalid —
+                    // flush lossily rather than stall.
+                    if pending.len() > 4 {
+                        let data = String::from_utf8_lossy(&pending).to_string();
+                        let _ = handle.emit(
+                            "terminal-output",
+                            TerminalOutputPayload {
+                                session_id: sid,
+                                data,
+                            },
+                        );
+                        pending.clear();
+                    }
                 }
                 Err(_) => break,
             }
