@@ -420,6 +420,14 @@ button, a, input, select, textarea {
   caret-color: var(--nh-accent);
 }
 
+/* Bear-style list markers: tint ordered-list numbers and bullets with the red accent.
+   Crepe defaults the marker color to --crepe-color-outline (= --nh-border), which reads too dim.
+   Set the color directly on the .label text; task checkboxes (.checked/.unchecked) stay neutral. */
+.nh-qa-doc .milkdown .milkdown-list-item-block li .label-wrapper .label.ordered,
+.nh-qa-doc .milkdown .milkdown-list-item-block li .label-wrapper .label.bullet {
+  color: var(--nh-accent);
+}
+
 /* Mermaid diagrams */
 .nh-qa-doc .milkdown .milkdown-mermaid {
   margin: 12px 0;
