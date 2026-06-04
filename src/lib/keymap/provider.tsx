@@ -190,12 +190,19 @@ function useKeymapCtx(): KeymapApi {
   return ctx;
 }
 
-/** Register a handler for a keymap action while this component is mounted (focused view wins). */
-export function useKeymapAction(action: string, handler: ActionHandler): void {
+/**
+ * Register a handler for a keymap action while this component is mounted (focused view wins).
+ * Pass `enabled = false` to skip registration — used so only the *active* tab's view registers
+ * its actions when every open tab is kept mounted (background tabs must not claim the binding).
+ */
+export function useKeymapAction(action: string, handler: ActionHandler, enabled = true): void {
   const api = useKeymapCtx();
   const ref = useRef(handler);
   ref.current = handler;
-  useEffect(() => api.registerAction(action, ref), [api, action]);
+  useEffect(() => {
+    if (!enabled) return;
+    return api.registerAction(action, ref);
+  }, [api, action, enabled]);
 }
 
 /** Mark a keymap context active while `active` is true (e.g. "Grid" while the task table shows). */

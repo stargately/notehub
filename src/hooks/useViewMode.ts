@@ -10,6 +10,8 @@ interface UseViewModeOptions {
   activeTabId: string;
   activeFilePath: string | null;
   projectData: ProjectData | null;
+  /** Path `projectData` was actually loaded from; mid tab-switch it lags `activeFilePath`. */
+  loadedPath: string | null;
   replaceFromRaw: (raw: string) => boolean;
   flushSave: () => void;
   setTabs: React.Dispatch<React.SetStateAction<TabInfo[]>>;
@@ -20,7 +22,7 @@ interface UseViewModeOptions {
 }
 
 export function useViewMode({
-  activeTabId, activeFilePath, projectData,
+  activeTabId, activeFilePath, projectData, loadedPath,
   replaceFromRaw, flushSave, setTabs,
   setSelectedTaskId, setShowNotes, undoHistory, sync,
 }: UseViewModeOptions) {
@@ -31,6 +33,11 @@ export function useViewMode({
 
   const viewMode = viewModeMap[activeTabId] ?? "grid";
   const editorContent = editorContentMap[activeTabId] ?? "";
+
+  // `projectData` belongs to `activeFilePath` only once the load for this tab has landed.
+  // Until then (mid tab-switch, or the null-path template window) it still holds the previous
+  // file's data, so we must not seed this tab's editor from it nor write it back to disk.
+  const synced = loadedPath === activeFilePath;
 
   const setViewMode = useCallback((mode: ViewMode) => {
     setViewModeMap((prev) => ({ ...prev, [activeTabId]: mode }));
@@ -50,13 +57,14 @@ export function useViewMode({
   // effect does not fire on them and won't clobber in-progress edits.
   useEffect(() => {
     if (!isRawDoc) return;
+    if (!synced) return; // projectData is still the previous file's — don't seed this tab from it
     setEditorContentMap((prev) =>
       prev[activeTabId] === projectData!.rawContent
         ? prev
         : { ...prev, [activeTabId]: projectData!.rawContent }
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRawDoc, activeTabId, projectData?.rawContent]);
+  }, [isRawDoc, synced, activeTabId, projectData?.rawContent]);
 
   const handleToggleViewMode = useCallback(() => {
     if (isRawDoc) {
@@ -87,6 +95,12 @@ export function useViewMode({
   const editorSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleEditorChange = useCallback(
     (content: string) => {
+      // Ignore changes for a real file whose data hasn't loaded for this tab yet. The
+      // WYSIWYG editor re-emits its content on (re)mount, so right after a tab switch this
+      // fires with the *previous* file's text (or an empty editor) before the seed lands —
+      // persisting it would drift one file's content onto another. Untitled docs (no path)
+      // still flow through so their in-memory buffer updates.
+      if (activeFilePath && !synced) return;
       setEditorContent(content);
       if (!activeFilePath) return;
       syncRef.current?.markDirty(activeFilePath);
@@ -101,7 +115,7 @@ export function useViewMode({
         }
       }, 300);
     },
-    [activeFilePath, setEditorContent]
+    [activeFilePath, synced, setEditorContent]
   );
 
   const handleSave = useCallback(async () => {
@@ -118,6 +132,8 @@ export function useViewMode({
           )
         );
       } else {
+        // Don't flush an editor buffer that isn't synced to this file yet (would clobber).
+        if (!synced) return;
         // Flush any pending editor debounce, write immediately
         if (editorSaveTimeoutRef.current) {
           clearTimeout(editorSaveTimeoutRef.current);
@@ -146,21 +162,18 @@ export function useViewMode({
     } else {
       flushSave();
     }
-  }, [viewMode, activeFilePath, activeTabId, projectData, editorContent, flushSave, setTabs]);
+  }, [viewMode, activeFilePath, synced, activeTabId, projectData, editorContent, flushSave, setTabs]);
 
-  const cleanupTab = useCallback((tabId: string) => {
-    // Cancel any pending editor autosave so closing a tab (e.g. after deleting its file from the
-    // tree) can't fire a debounced write that re-creates the just-trashed file on disk.
-    if (editorSaveTimeoutRef.current) {
-      clearTimeout(editorSaveTimeoutRef.current);
-      editorSaveTimeoutRef.current = null;
-    }
-    setViewModeMap((prev) => { const next = { ...prev }; delete next[tabId]; return next; });
-    setEditorContentMap((prev) => { const next = { ...prev }; delete next[tabId]; return next; });
+  // Cancel any pending editor autosave on unmount. A tab's DocumentView unmounts when the tab
+  // closes, so this stops a debounced write from re-creating a just-deleted/closed file.
+  useEffect(() => {
+    return () => {
+      if (editorSaveTimeoutRef.current) clearTimeout(editorSaveTimeoutRef.current);
+    };
   }, []);
 
   return {
     viewMode, editorContent,
-    handleToggleViewMode, handleEditorChange, handleSave, cleanupTab,
+    handleToggleViewMode, handleEditorChange, handleSave,
   };
 }

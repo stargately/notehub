@@ -124,6 +124,9 @@ export function MarkdownEditor({ content, onChange, darkMode, language = "markdo
         onChange={(value) => onChange(value ?? "")}
         onMount={handleMount}
         options={{
+          // Background tabs stay mounted in a display:none container, so Monaco must
+          // re-measure when its tab is revealed (otherwise it paints at 0×0).
+          automaticLayout: true,
           wordWrap: "on",
           minimap: { enabled: false },
           fontSize: 14,

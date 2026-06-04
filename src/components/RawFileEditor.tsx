@@ -1,25 +1,27 @@
 import { useEffect, useState } from "react";
 import { MarkdownEditor } from "./MarkdownEditor";
+import { ConflictModal } from "./ConflictModal";
 import { useRawFile } from "../hooks/useRawFile";
+import { useFileSync } from "../hooks/useFileSync";
 import { languageForPath } from "../lib/file-kind";
 import { toAssetUrl } from "../lib/tauri-api";
-import type { FileSync } from "../hooks/useFileSync";
 import type { FileKind } from "../lib/types";
 
 interface RawFileEditorProps {
   filePath: string;
   kind: FileKind;
   darkMode: boolean;
-  sync: FileSync;
 }
 
 /**
  * Renders a non-markdown file opened from the workspace tree: images inline, other text
  * files in an editable Monaco editor, and non-text blobs as an "is binary" placeholder.
+ * Fully self-contained per file — it owns its own disk-sync baseline and conflict handling
+ * (one RawFileEditor instance per tab, so nothing is shared across files).
  */
-export function RawFileEditor({ filePath, kind, darkMode, sync }: RawFileEditorProps) {
+export function RawFileEditor({ filePath, kind, darkMode }: RawFileEditorProps) {
   if (kind === "image") return <ImageView filePath={filePath} />;
-  return <TextView filePath={filePath} darkMode={darkMode} sync={sync} />;
+  return <TextView filePath={filePath} darkMode={darkMode} />;
 }
 
 function ImageView({ filePath }: { filePath: string }) {
@@ -51,12 +53,11 @@ function ImageView({ filePath }: { filePath: string }) {
 function TextView({
   filePath,
   darkMode,
-  sync,
 }: {
   filePath: string;
   darkMode: boolean;
-  sync: FileSync;
 }) {
+  const sync = useFileSync();
   const { content, onChange, loading, error, reload } = useRawFile(filePath, sync);
 
   // Cmd+R reloads the active raw doc from disk (parity with markdown's Cmd+R). Clean buffers
@@ -85,6 +86,11 @@ function TextView({
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
+      <ConflictModal
+        conflict={sync.conflict}
+        onKeepDisk={() => sync.resolveKeepDisk(reload)}
+        onKeepMine={() => sync.resolveKeepMine()}
+      />
       <MarkdownEditor
         content={content}
         onChange={onChange}

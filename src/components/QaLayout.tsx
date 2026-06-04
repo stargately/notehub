@@ -40,6 +40,8 @@ interface QaLayoutProps {
    * Only affects presentation (badge text); the edit/save path is identical.
    */
   variant?: "qa" | "plain";
+  /** Whether this doc's tab is active — gates its keymap shortcuts (Cmd+F find, Cmd+Shift+P print). */
+  active?: boolean;
 }
 
 interface ParsedState {
@@ -59,7 +61,7 @@ function parse(content: string): ParsedState {
  */
 export function QaLayout({
   content, onChange, onToggleEditor, onCycleTheme, themeMode, darkMode, projectName, fileName,
-  variant = "qa",
+  variant = "qa", active = true,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
   // Bumped only on EXTERNAL content changes, to force a remount of the (mount-once) editors.
@@ -96,8 +98,8 @@ export function QaLayout({
 
   // Cmd+Shift+P prints; Cmd+F opens the find bar (suppressing the broken WKWebView native find).
   // Both are dispatched by the global keymap while the QA editor is the active context.
-  useKeymapAction(ACTIONS.print, () => printRef.current());
-  useKeymapAction(ACTIONS.find, () => setFindOpen(true));
+  useKeymapAction(ACTIONS.print, () => printRef.current(), active);
+  useKeymapAction(ACTIONS.find, () => setFindOpen(true), active);
 
   // Recompute matches when the query/case/open-state changes, and after the editors
   // remount (mountKey bumps on external change *and* on our own replace commits). The

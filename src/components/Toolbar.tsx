@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ProjectMeta, WeekFilter } from "../lib/types";
 import type { ThemeMode } from "../hooks/useDarkMode";
 import { ThemeIcon } from "./ThemeIcon";
@@ -21,6 +21,8 @@ interface ToolbarProps {
   onCycleTheme: () => void;
   onWeekFilterChange: (filter: WeekFilter) => void;
   onToggleEditor?: () => void;
+  /** Whether this toolbar's tab is the active one — gates its keymap shortcuts (Cmd+F/Cmd+N). */
+  active?: boolean;
 }
 
 export function Toolbar({
@@ -37,13 +39,16 @@ export function Toolbar({
   onCycleTheme,
   onWeekFilterChange,
   onToggleEditor,
+  active = true,
 }: ToolbarProps) {
   const [filterFocused, setFilterFocused] = useState(false);
+  const filterInputRef = useRef<HTMLInputElement>(null);
 
-  // Cmd+F focuses the filter, Cmd+N adds a task — dispatched by the keymap in the Grid context
-  // (the Toolbar only renders in the task-table view).
-  useKeymapAction(ACTIONS.focusFilter, () => document.getElementById("filter-input")?.focus());
-  useKeymapAction(ACTIONS.newTask, () => onAddTask());
+  // Cmd+F focuses the filter, Cmd+N adds a task — dispatched by the keymap in the Grid context.
+  // Gated on `active` because every open tab's toolbar stays mounted; focus this tab's own input
+  // via a ref (the `filter-input` id is no longer unique across mounted tabs).
+  useKeymapAction(ACTIONS.focusFilter, () => filterInputRef.current?.focus(), active);
+  useKeymapAction(ACTIONS.newTask, () => onAddTask(), active);
 
   return (
     <div
@@ -85,7 +90,7 @@ export function Toolbar({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
         <input
-          id="filter-input"
+          ref={filterInputRef}
           type="text"
           value={filterText}
           onChange={(e) => onFilterChange(e.target.value)}

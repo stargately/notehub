@@ -9,8 +9,9 @@ NoteHub is a markdown-native desktop task manager built with **Tauri v2 + React 
 ```
 notehub/
 ├── src/                        # React frontend
-│   ├── App.tsx                 # Main app (tabs, state, keyboard shortcuts)
+│   ├── App.tsx                 # Window shell: tabs, sidebar, terminal, global keymap (no per-doc state)
 │   ├── components/
+│   │   ├── DocumentView.tsx    # One open document = buffer+view (own content/path/save); Zed-style
 │   │   ├── TaskTable.tsx       # AG Grid task table
 │   │   ├── TaskDetailDrawer.tsx # Side drawer with Tiptap editor
 │   │   ├── ProjectNotes.tsx    # Project notes (Tiptap)
@@ -35,7 +36,7 @@ notehub/
 │   │   ├── useProjectFile.ts   # File load/parse/save logic
 │   │   ├── useFileIndex.ts     # Lazy-cached recursive file index for Cmd+P (invalidate on change)
 │   │   ├── useWorkspace.ts     # Workspace folder root + sidebar open/width state
-│   │   ├── useRawFile.ts       # Load/autosave a non-md text file (shared FileSync)
+│   │   ├── useRawFile.ts       # Load/autosave a non-md text file (own per-file FileSync)
 │   │   └── useFileWatcher.ts   # External change detection
 │   ├── lib/
 │   │   ├── types.ts            # TypeScript interfaces
@@ -104,10 +105,17 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 ## Testing
 
-- **Frontend (`vitest`, jsdom)** — pure modules under `src/lib/` and hooks under `src/hooks/`
-  have unit tests in adjacent `__tests__/` dirs (`markdown-parser`, `qa-parser`, `print`, `tags`,
-  `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`, `recent-files`, `useFileSync`, and the
-  keymap engine `keymap/__tests__/` — `keystroke`, `context`, `keymap`).
+- **Frontend (`vitest`, jsdom)** — pure modules under `src/lib/`, hooks under `src/hooks/`, and a
+  few components have unit/integration tests in adjacent `__tests__/` dirs (`markdown-parser`,
+  `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`,
+  `recent-files`, `useFileSync`, `useProjectFile`, `useViewMode`, `useRawFile` — these lock in the
+  loaded-path guard that stops one tab's content from being written onto another file and the editor
+  never being seeded from a stale `projectData`; `components/__tests__/DocumentView` renders two real
+  per-tab `DocumentView`s with the heavy editors stubbed and asserts edits route to each tab's own
+  file with no cross-write (plus the active tab's command bundle routing and raw-tab rendering); the
+  hook suites also cover the unmount-cancels-autosave guarantee — and the keymap engine
+  `keymap/__tests__/` — `keystroke`, `context`, `keymap`, `user-keymap`, and `provider` (the
+  `useKeymapAction(enabled)` gating that lets only the active tab claim a binding)).
 - **Backend (`cargo test`)** — Rust unit tests live in `#[cfg(test)] mod tests` blocks inside each
   source file. The pattern is **"extract a pure helper, then test it"**: logic that used to be
   buried in thread closures or `AppHandle`-bound IO was factored into pure functions so it can be
@@ -290,6 +298,8 @@ replace still work without it.
   - **Clean buffer + external change → live auto-reload** (VS Code style): `reconcile` calls `loadFile` and the editor updates instantly.
   - **Dirty buffer + external change → conflict**: a blocking **`ConflictModal`** (Keep disk / Keep mine) — NoteHub never silently discards either side (IntelliJ "File Cache Conflict").
   - **Single write chokepoint**: all watched-file writes go through `guardedWrite`, which re-reads disk first and raises a conflict instead of clobbering an external change — this is what stops the 300ms autosave from overwriting Claude when the debounce races the watcher. Every load/write updates the baseline.
+  - **No cross-tab drift — per-document instances (`DocumentView`, Zed-style)**: the structural guarantee that one tab's content can never be written onto another file. Each open tab renders its own `DocumentView` instance bound to its **own fixed `filePath`** — Zed's "buffer + view" as one self-contained subtree. A `DocumentView` owns its content, file-sync baseline/dirty state, autosave, undo, and per-tab UI (filter/selection/view mode); every write target is captured from *that instance's* props and never read from a global "active file", so a stale-window save can't drift. All viewed tabs stay mounted (visibility toggled via `display`, lazy: only after first activation; `App` keeps a `everActive` set + always renders the active tab), so background tabs keep their editor state and any pending debounced write. Only the **active** tab registers keymap actions/contexts and publishes its **command bundle** (`DocCommands`: save/reload/toggleView/undo/redo) to `App`; the window-level keymap and File-menu Save delegate to `App`'s `activeCmdsRef` (race-safe register-returns-unregister, like the keymap provider). `App` is now a pure shell (tabs/sidebar/terminal/global actions) with **no per-document state**. Closing a tab unmounts its `DocumentView`, whose unmount-cleanup cancels pending autosaves (so a just-deleted file isn't recreated). Heavy editors in a hidden tab need to re-measure on reveal — Monaco uses `automaticLayout: true`.
+  - **Loaded-path guard (defense-in-depth)**: `guardedWrite` only protects against *external* changes — it faithfully writes whatever content it's handed, even to the wrong file. Independently of the per-instance architecture above, the buffer hooks also gate on the path their state was loaded from: each records `loadedPath` (plus a monotonic generation token to drop out-of-order reads) and refuses to persist when `loadedPath !== <the path being written>` (`useViewMode` derives `synced = loadedPath === activeFilePath` and won't *seed* an editor from a non-matching `projectData`). This catches the same drift class (incl. the **`getDefaultProjectContent()` "Untitled Project" `layout: todo` template** that loads whenever `filePath` is momentarily `null`) even if a future caller reuses a hook across paths. The untitled case (`filePath === null`, `loadedPath === null`) still edits in memory but can't reach disk. Regression tests: `useProjectFile`/`useViewMode`/`useRawFile`/`DocumentView` `__tests__`.
 - **Browser fallback**: Runs without Tauri using `sample-project.md` for UI testing
 - **Dark mode**: Class-based (`dark` class), AG Grid + Tailwind themed
 
@@ -345,12 +355,17 @@ A small Zed-inspired engine, split into pure (unit-tested) modules + a React lay
 - **`provider.tsx`** — `KeymapProvider` (wraps the app in `main.tsx`) hosts the one window `keydown`
   dispatcher: builds the active context set from contributed contexts (+ always `Workspace`),
   buffers chords with a timeout, resolves, and calls the **most-recently-registered** handler for
-  the action (the focused view). Hooks: `useKeymapAction(name, handler)` (register a handler;
-  focused/last wins via a stack), `useKeymapContext(name, active)` (contribute a context while
-  active), `useKeymapApi()` (for the editor UI). Decoupling key→action (keymap) from action→handler
-  (registry) is the Zed model — `App` owns global actions + the Grid/Editor/QA/RawFile contexts;
-  `Toolbar`/`QaLayout`/`TerminalPanel` register their own actions (and `TerminalPanel` contributes
-  the `Terminal` context when focus is inside the panel).
+  the action (the focused view). Hooks: `useKeymapAction(name, handler, enabled = true)` (register a
+  handler; focused/last wins via a stack; `enabled = false` skips registration), `useKeymapContext(name,
+  active)` (contribute a context while active), `useKeymapApi()` (for the editor UI). Decoupling
+  key→action (keymap) from action→handler (registry) is the Zed model — `App` owns workspace-level
+  actions (quick-open, open, sidebar/terminal toggles, tab switching) and delegates per-document
+  actions (save/reload/toggle-raw/undo/redo) to the active tab's published `DocCommands`. Because
+  **every open tab's `DocumentView` stays mounted**, per-document views register only when active:
+  `DocumentView` contributes the Grid/Editor/QA/RawFile contexts gated on `active`, and `Toolbar`
+  (`focusFilter`/`newTask`) and `QaLayout` (`find`/`print`) take an `active` prop they pass as
+  `enabled` so background tabs don't claim those bindings. `TerminalPanel` is global — it registers
+  `splitTerminal` and contributes the `Terminal` context when focus is inside the panel.
 - **`KeybindingsHelp.tsx`** — File → Keyboard Shortcuts…: lists the effective merged keymap grouped
   by context (pretty keystrokes) and a JSON editor for user overrides (save → localStorage / reset).
 - **Editor bridging**: Monaco still re-dispatches `Cmd+/`, `Cmd+S`, `Cmd+B` as synthetic window
@@ -470,9 +485,10 @@ tree file live-reloads on external edits.
     (existing grid/qa/plain views); images → `image`; everything else → `raw`. Each `TabInfo`
     carries its `kind`. In `App.tsx`, raw/image tabs render `RawFileEditor` (the markdown pipeline
     is gated off with `useProjectFile(isRawFile ? null : activeFilePath, …)`).
-  - `RawFileEditor.tsx`: raw text files open in Monaco (editable, autosaved via `useRawFile` +
-    the shared `FileSync` conflict machinery; language from `languageForPath`); images render
-    inline via `convertFileSrc`; other binaries show an "is binary" placeholder.
+  - `RawFileEditor.tsx`: raw text files open in Monaco (editable, autosaved via `useRawFile`;
+    fully self-contained — it creates its own `useFileSync` + renders its own `ConflictModal`, since
+    there's one instance per tab; language from `languageForPath`); images render inline via
+    `convertFileSrc`; other binaries show an "is binary" placeholder.
 
 ## Development Guidelines
 

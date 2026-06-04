@@ -1,62 +1,34 @@
-import { useState, useRef, useCallback, useEffect } from "react";
-import { useProjectFile } from "./hooks/useProjectFile";
-import { useFileWatcher } from "./hooks/useFileWatcher";
-import { useFileSync } from "./hooks/useFileSync";
+import { useState, useRef, useCallback, useEffect, type MutableRefObject } from "react";
 import { useDarkMode } from "./hooks/useDarkMode";
-import { useClickOutside } from "./hooks/useClickOutside";
 import { useTabManagement } from "./hooks/useTabManagement";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { useFileIndex } from "./hooks/useFileIndex";
-import { useViewMode } from "./hooks/useViewMode";
-import { useTaskFilters } from "./hooks/useTaskFilters";
-import { useKeymapAction, useKeymapContext } from "./lib/keymap/provider";
-import { ACTIONS, CONTEXTS } from "./lib/keymap/actions";
+import { useKeymapAction } from "./lib/keymap/provider";
+import { ACTIONS } from "./lib/keymap/actions";
 import { useUndoHistory } from "./hooks/useUndoHistory";
 import { useAutoUpdate } from "./hooks/useAutoUpdate";
 import { isTauri } from "./lib/tauri-api";
 import { refreshAllDirs } from "./lib/tree-refresh";
-import { serializeProjectMd } from "./lib/markdown-parser";
-import type { ProjectData } from "./lib/types";
-import type { WeekFilter } from "./lib/types";
-import { TaskTable } from "./components/TaskTable";
-import { Toolbar } from "./components/Toolbar";
-import { ProjectNotes } from "./components/ProjectNotes";
-import { TaskDetailDrawer } from "./components/TaskDetailDrawer";
 import { TabBar } from "./components/TabBar";
-import { ThemeIcon } from "./components/ThemeIcon";
 import { TerminalPanel } from "./components/TerminalPanel";
-import { MarkdownEditor } from "./components/MarkdownEditor";
-import { RawFileEditor } from "./components/RawFileEditor";
 import { Sidebar } from "./components/Sidebar";
 import { MenuBar } from "./components/MenuBar";
 import type { FileTreeHandle } from "./components/FileTree";
 import { QuickOpen } from "./components/QuickOpen";
 import { KeybindingsHelp } from "./components/KeybindingsHelp";
-import { QaLayout } from "./components/QaLayout";
-import { deriveBaseName } from "./lib/print";
-import { ConflictModal } from "./components/ConflictModal";
+import { DocumentView, type DocCommands } from "./components/DocumentView";
 import { Toaster } from "sonner";
 
 function App() {
-  // UI state
-  const [filterText, setFilterText] = useState("");
-  const [groupBy, setGroupBy] = useState<string | null>(null);
-  const [showNotes, setShowNotes] = useState(false);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [hideDone, setHideDone] = useState(false);
-  const [weekFilter, setWeekFilter] = useState<WeekFilter>(null);
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalMounted, setTerminalMounted] = useState(false);
-  const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [keymapHelpOpen, setKeymapHelpOpen] = useState(false);
 
   const { darkMode, themeMode, cycleThemeMode } = useDarkMode();
+  // Shared, tab-id-keyed undo stacks — survive while a tab is open; cleaned up on close.
   const undoHistory = useUndoHistory();
   useAutoUpdate();
-
-  // Ref to break circular dependency between useTabManagement and useViewMode
-  const cleanupTabRef = useRef<(tabId: string) => void>(() => {});
 
   const {
     workspaceRoot, ready: workspaceReady,
@@ -67,8 +39,6 @@ function App() {
 
   // Imperative handle to the file tree, owned here so the top File menu can create at the root.
   const fileTreeRef = useRef<FileTreeHandle>(null);
-  // New File/New Folder from the menu render an inline input in the tree, so the sidebar must be
-  // open and FileTree mounted. We open the sidebar, then flush the action once the ref is live.
   const [pendingNew, setPendingNew] = useState<"file" | "folder" | null>(null);
   const triggerNew = useCallback(
     (kind: "file" | "folder") => {
@@ -95,139 +65,32 @@ function App() {
     workspaceRoot,
     workspaceReady,
     onOpenFolder: setWorkspace,
-    onTabClosed: (id) => cleanupTabRef.current(id),
-    onTabSwitch: () => {
-      setFilterText("");
-      setShowNotes(false);
-      setWeekFilter(null);
-      setSelectedTaskId(null);
-    },
+    onTabClosed: (id) => undoHistory.cleanupTab(id),
   });
 
-  // How the active tab renders: markdown → grid/qa/plain views; raw/image → RawFileEditor.
-  const activeKind = tabs.find((t) => t.id === activeTabId)?.kind ?? "markdown";
-  const isRawFile = activeKind === "raw" || activeKind === "image";
+  // The active document publishes its command bundle (Cmd+S/R/-/undo/redo) here, so the
+  // window-level keymap and File menu act on the focused doc without App owning its state.
+  const activeCmdsRef = useRef<MutableRefObject<DocCommands> | null>(null);
+  const publishCommands = useCallback((ref: MutableRefObject<DocCommands>) => {
+    activeCmdsRef.current = ref;
+    return () => {
+      if (activeCmdsRef.current === ref) activeCmdsRef.current = null;
+    };
+  }, []);
+  const runActive = useCallback((fn: (c: DocCommands) => void) => {
+    const cmds = activeCmdsRef.current?.current;
+    if (cmds) fn(cmds);
+  }, []);
 
-  // Debounced onBeforeSave: coalesces rapid edits (e.g. Tiptap keystrokes) into one undo step
-  const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSnapshotRef = useRef<string | null>(null);
+  // Keep editor subtrees alive once a tab has been viewed (lazy: restored-but-unopened tabs
+  // don't instantiate heavy editors until first activated). The active tab always renders.
+  const [everActive, setEverActive] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!activeTabId) return;
+    setEverActive((prev) => (prev.has(activeTabId) ? prev : new Set(prev).add(activeTabId)));
+  }, [activeTabId]);
 
-  const flushPendingSnapshot = useCallback(() => {
-    if (snapshotTimerRef.current) {
-      clearTimeout(snapshotTimerRef.current);
-      snapshotTimerRef.current = null;
-    }
-    if (pendingSnapshotRef.current && activeTabId) {
-      undoHistory.pushSnapshot(activeTabId, pendingSnapshotRef.current);
-      pendingSnapshotRef.current = null;
-    }
-  }, [activeTabId, undoHistory]);
-
-  const onBeforeSave = useCallback(
-    (currentData: ProjectData) => {
-      const snapshot = serializeProjectMd(currentData);
-      pendingSnapshotRef.current = snapshot;
-      if (snapshotTimerRef.current) clearTimeout(snapshotTimerRef.current);
-      snapshotTimerRef.current = setTimeout(() => {
-        if (pendingSnapshotRef.current && activeTabId) {
-          undoHistory.pushSnapshot(activeTabId, pendingSnapshotRef.current);
-          pendingSnapshotRef.current = null;
-        }
-      }, 500);
-    },
-    [activeTabId, undoHistory]
-  );
-
-  // Init undo history when file data is loaded (called from inside loadFile,
-  // avoiding race conditions with stale projectData from a previous filePath).
-  const onDataLoaded = useCallback((data: ProjectData) => {
-    if (activeTabId) {
-      // QA and plain docs are edited as raw markdown, not serialized from tasks.
-      // Only `layout: todo` serializes; everything else snapshots the raw content.
-      const snapshot = data.meta.layout !== "todo" ? data.rawContent : serializeProjectMd(data);
-      undoHistory.initTab(activeTabId, snapshot);
-    }
-  }, [activeTabId, undoHistory]);
-
-  // Content-based reconciliation between the in-memory editor and the file on disk
-  // (so NoteHub can be co-edited with Claude Code writing the same file).
-  const fileSync = useFileSync();
-
-  const {
-    filePath, projectData, loading, error,
-    loadFile, updateTasks, updateTask, addTask, updateNotes,
-    replaceFromRaw, flushSave,
-  } = useProjectFile(isRawFile ? null : activeFilePath, onBeforeSave, onDataLoaded, fileSync);
-
-  const {
-    viewMode, editorContent,
-    handleToggleViewMode, handleEditorChange, handleSave, cleanupTab,
-  } = useViewMode({
-    activeTabId, activeFilePath, projectData,
-    replaceFromRaw, flushSave, setTabs,
-    setSelectedTaskId, setShowNotes,
-    undoHistory, sync: fileSync,
-  });
-  cleanupTabRef.current = (tabId: string) => {
-    cleanupTab(tabId);
-    undoHistory.cleanupTab(tabId);
-  };
-
-  const {
-    filteredTasks, selectedTask,
-    handleTasksChanged, handleDescriptionChange, handleDeleteTask,
-  } = useTaskFilters({
-    projectData, hideDone, weekFilter, selectedTaskId,
-    updateTasks, updateTask, setSelectedTaskId, setGroupBy,
-  });
-
-  const handleAddTask = useCallback(() => {
-    const newId = addTask();
-    if (newId) setHighlightTaskId(newId);
-  }, [addTask]);
-
-  // Click-outside-to-close drawer
-  const drawerRef = useRef<HTMLDivElement>(null);
-  useClickOutside(drawerRef, !!selectedTaskId, () => setSelectedTaskId(null));
-
-  // Undo/redo callbacks for Monaco editor exhaustion
-  const handleUndoExhausted = useCallback(() => {
-    if (!activeTabId) return null;
-    flushPendingSnapshot();
-    undoHistory.suppressNextPush();
-    return undoHistory.undo(activeTabId);
-  }, [activeTabId, undoHistory, flushPendingSnapshot]);
-
-  const handleRedoExhausted = useCallback(() => {
-    if (!activeTabId) return null;
-    undoHistory.suppressNextPush();
-    return undoHistory.redo(activeTabId);
-  }, [activeTabId, undoHistory]);
-
-  // Raw/image tabs autosave themselves and have no grid/editor mode, so suppress the
-  // markdown-only Cmd+S and Cmd+/ actions while one is active.
-  const onSave = useCallback(() => {
-    if (isRawFile) return;
-    handleSave();
-  }, [isRawFile, handleSave]);
-  const onToggleView = useCallback(() => {
-    if (isRawFile) return;
-    handleToggleViewMode();
-  }, [isRawFile, handleToggleViewMode]);
-
-  const isQa = projectData?.meta.layout === "qa";
-  // "raw unless todo": both `layout: qa` and plain (no-layout) docs are edited as raw
-  // markdown via QaLayout — only `layout: todo` round-trips through the task serializer.
-  const isRawDoc = !!projectData && projectData.meta.layout !== "todo";
-
-  // ── Keymap (Zed-style) ── which UI region is active (contexts) + the action handlers App owns.
-  // Bindings live in src/lib/keymap/default-keymap.ts; views (Toolbar/QaLayout/TerminalPanel)
-  // register their own actions + contexts.
-  useKeymapContext(CONTEXTS.grid, !!projectData && !isRawDoc && !isRawFile && viewMode === "grid");
-  useKeymapContext(CONTEXTS.editor, !!projectData && !isRawDoc && !isRawFile && viewMode === "editor");
-  useKeymapContext(CONTEXTS.qa, !!projectData && isRawDoc && !isRawFile);
-  useKeymapContext(CONTEXTS.rawFile, isRawFile);
-
+  // ── Global (workspace-level) keymap actions. Per-doc actions delegate to the active tab. ──
   useKeymapAction(ACTIONS.quickOpen, () => setQuickOpenOpen(true));
   useKeymapAction(ACTIONS.openFile, () => void handleAddTab());
   useKeymapAction(ACTIONS.toggleSidebar, () => toggleSidebar());
@@ -235,9 +98,6 @@ function App() {
     setShowTerminal((prev) => !prev);
     setTerminalMounted(true);
   });
-  useKeymapAction(ACTIONS.reload, () => loadFile());
-  useKeymapAction(ACTIONS.save, () => onSave());
-  useKeymapAction(ACTIONS.toggleRawView, () => onToggleView());
   useKeymapAction(ACTIONS.copyPath, () => {
     if (activeFilePath) navigator.clipboard.writeText(activeFilePath);
   });
@@ -245,42 +105,14 @@ function App() {
     const idx = typeof arg === "number" ? arg : 0;
     if (idx >= 0 && idx < tabs.length) setActiveTabId(tabs[idx].id);
   });
-  useKeymapAction(ACTIONS.undo, () => {
-    if (!activeTabId || !replaceFromRaw) return;
-    flushPendingSnapshot?.();
-    const snapshot = undoHistory.undo(activeTabId);
-    if (snapshot) {
-      undoHistory.suppressNextPush();
-      replaceFromRaw(snapshot);
-    }
-  });
-  useKeymapAction(ACTIONS.redo, () => {
-    if (!activeTabId || !replaceFromRaw) return;
-    flushPendingSnapshot?.();
-    const snapshot = undoHistory.redo(activeTabId);
-    if (snapshot) {
-      undoHistory.suppressNextPush();
-      replaceFromRaw(snapshot);
-    }
-  });
   useKeymapAction(ACTIONS.openKeymap, () => setKeymapHelpOpen(true));
+  useKeymapAction(ACTIONS.reload, () => runActive((c) => c.reload()));
+  useKeymapAction(ACTIONS.save, () => runActive((c) => c.save()));
+  useKeymapAction(ACTIONS.toggleRawView, () => runActive((c) => c.toggleView()));
+  useKeymapAction(ACTIONS.undo, () => runActive((c) => c.undo()));
+  useKeymapAction(ACTIONS.redo, () => runActive((c) => c.redo()));
 
-  // File watcher for external changes → reconcile against disk. `currentBytes` is what
-  // we'd write right now (used as "mine" if there's a conflict); `loadFile` re-reads and
-  // re-parses the file when a clean buffer is auto-reloaded.
-  const currentBytes = isRawDoc
-    ? editorContent
-    : projectData
-    ? serializeProjectMd(projectData)
-    : "";
-  const reconcileRef = useRef<() => void>(() => {});
-  reconcileRef.current = () => {
-    if (filePath) fileSync.reconcile(filePath, currentBytes, loadFile);
-  };
-  const handleExternalChange = useCallback(() => reconcileRef.current(), []);
-  useFileWatcher(filePath, handleExternalChange);
-
-  if (!initialized || (loading && tabs.length === 0)) {
+  if (!initialized) {
     return (
       <div className="h-screen flex items-center justify-center" style={{ background: "var(--nh-bg)" }}>
         <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
@@ -295,21 +127,7 @@ function App() {
     );
   }
 
-  if (error && tabs.length === 0) {
-    return (
-      <div className="h-screen flex items-center justify-center" style={{ background: "var(--nh-bg)" }}>
-        <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
-        <div className="text-center">
-          <p className="text-sm mb-3" style={{ color: "var(--nh-accent)" }}>Error: {error}</p>
-          <button onClick={loadFile} className="nh-btn-primary">
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!projectData && tabs.length === 0) {
+  if (tabs.length === 0) {
     return (
       <div className="h-screen flex items-center justify-center" style={{ background: "var(--nh-bg)" }}>
         <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
@@ -333,11 +151,6 @@ function App() {
   return (
     <div className="nh-app-root h-screen flex flex-col" style={{ background: "var(--nh-bg)" }}>
       <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
-      <ConflictModal
-        conflict={fileSync.conflict}
-        onKeepDisk={() => fileSync.resolveKeepDisk(loadFile)}
-        onKeepMine={() => fileSync.resolveKeepMine()}
-      />
       <QuickOpen
         open={quickOpenOpen}
         onClose={() => setQuickOpenOpen(false)}
@@ -357,7 +170,7 @@ function App() {
           onOpenFile={handleAddTab}
           onOpenFolder={openFolder}
           onQuickOpen={() => setQuickOpenOpen(true)}
-          onSave={onSave}
+          onSave={() => runActive((c) => c.save())}
           onRefresh={refreshAllDirs}
           onOpenKeymap={() => setKeymapHelpOpen(true)}
         />
@@ -388,140 +201,30 @@ function App() {
             />
           )}
 
-          {isRawFile && activeFilePath ? (
-            <RawFileEditor
-              filePath={activeFilePath}
-              kind={activeKind}
-              darkMode={darkMode}
-              sync={fileSync}
-            />
-          ) : viewMode === "editor" ? (
-        <>
-          {/* Editor header bar */}
-          <div
-            className="flex flex-wrap items-center gap-2 px-4 py-2 border-b"
-            style={{ borderColor: "var(--nh-border)", background: "var(--nh-bg-elevated)" }}
-          >
-            <h1 className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--nh-text)" }}>
-              {projectData?.meta.project || "Untitled"}
-            </h1>
-            <span
-              className="px-2 py-0.5 text-[10px] rounded-full font-medium uppercase tracking-wide"
-              style={{ background: "var(--nh-accent-subtle)", color: "var(--nh-accent)" }}
-            >
-              Markdown
-            </span>
-            <span className="text-[10px]" style={{ color: "var(--nh-text-tertiary)" }}>
-              {navigator.platform.includes("Mac") ? "Cmd" : "Ctrl"}+/ to switch
-            </span>
-            <div className="flex-1" />
-            <button onClick={handleToggleViewMode} className="nh-btn">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-              Grid View
-            </button>
-            <button
-              onClick={cycleThemeMode}
-              className="nh-btn"
-              style={{ padding: "6px 8px" }}
-              title={`Theme: ${themeMode} (click to cycle)`}
-            >
-              <ThemeIcon themeMode={themeMode} />
-            </button>
-          </div>
-
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <MarkdownEditor
-              content={editorContent}
-              onChange={handleEditorChange}
-              darkMode={darkMode}
-              onUndoExhausted={handleUndoExhausted}
-              onRedoExhausted={handleRedoExhausted}
-            />
-          </div>
-        </>
-      ) : isRawDoc ? (
-        <QaLayout
-          content={editorContent}
-          onChange={handleEditorChange}
-          onToggleEditor={handleToggleViewMode}
-          onCycleTheme={cycleThemeMode}
-          themeMode={themeMode}
-          darkMode={darkMode}
-          projectName={projectData?.meta.project}
-          fileName={deriveBaseName(filePath)}
-          variant={isQa ? "qa" : "plain"}
-        />
-      ) : (
-        <>
-          <Toolbar
-            meta={projectData?.meta ?? { project: "", created: "", views: {}, columns: [], status_options: [], priority_options: [], assignee_options: [] }}
-            filterText={filterText}
-            groupBy={groupBy}
-            hideDone={hideDone}
-            showNotes={showNotes}
-            weekFilter={weekFilter}
-            onFilterChange={setFilterText}
-            onGroupByChange={setGroupBy}
-            onToggleHideDone={() => setHideDone(!hideDone)}
-            onAddTask={handleAddTask}
-            onToggleNotes={() => setShowNotes(!showNotes)}
-            themeMode={themeMode}
-            onCycleTheme={cycleThemeMode}
-            onWeekFilterChange={setWeekFilter}
-            onToggleEditor={handleToggleViewMode}
-          />
-
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {loading ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="flex items-center gap-2" style={{ color: "var(--nh-text-tertiary)" }}>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span className="text-sm">Loading...</span>
-                </div>
+          {/* One mounted DocumentView per (viewed) tab; only the active one is visible. Each owns
+              its own buffer + path + autosave, so one tab can never write onto another's file. */}
+          {tabs.map((tab) =>
+            tab.id === activeTabId || everActive.has(tab.id) ? (
+              <div
+                key={tab.id}
+                className="flex-1 flex flex-col overflow-hidden min-h-0"
+                style={{ display: tab.id === activeTabId ? "flex" : "none" }}
+              >
+                <DocumentView
+                  tabId={tab.id}
+                  filePath={tab.filePath}
+                  kind={tab.kind}
+                  active={tab.id === activeTabId}
+                  darkMode={darkMode}
+                  themeMode={themeMode}
+                  onCycleTheme={cycleThemeMode}
+                  setTabs={setTabs}
+                  undoHistory={undoHistory}
+                  publishCommands={publishCommands}
+                />
               </div>
-            ) : projectData ? (
-              <>
-                <div className="flex-1 flex overflow-hidden">
-                  <div className="flex-1 overflow-hidden">
-                    <TaskTable
-                      tasks={filteredTasks}
-                      meta={projectData.meta}
-                      filterText={filterText}
-                      highlightTaskId={highlightTaskId}
-                      onTasksChanged={handleTasksChanged}
-                      onTaskSelected={(task) => setSelectedTaskId(task.id)}
-                    />
-                  </div>
-
-                  {selectedTask && (
-                    <div ref={drawerRef}>
-                      <TaskDetailDrawer
-                        task={selectedTask}
-                        onDescriptionChange={handleDescriptionChange}
-                        onDelete={handleDeleteTask}
-                        onClose={() => setSelectedTaskId(null)}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {showNotes && (
-                  <ProjectNotes
-                    notes={projectData.notes}
-                    onUpdateNotes={updateNotes}
-                    darkMode={darkMode}
-                  />
-                )}
-              </>
-            ) : null}
-          </div>
-        </>
-      )}
+            ) : null
+          )}
 
           {terminalMounted && (
             <TerminalPanel

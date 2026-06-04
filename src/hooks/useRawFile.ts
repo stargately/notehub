@@ -17,18 +17,27 @@ export function useRawFile(filePath: string, sync: FileSync) {
   const contentRef = useRef("");
   contentRef.current = content;
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The path `content` was loaded from, and a generation token to drop out-of-order reads.
+  // This component is reused across tabs, so `content` lags `filePath` right after a switch;
+  // writes are gated on these so one file's text can never be saved onto another.
+  const loadedPathRef = useRef<string | null>(null);
+  const loadGenRef = useRef(0);
 
   const load = useCallback(async () => {
+    const gen = ++loadGenRef.current;
     setLoading(true);
     try {
       const text = await readTextFile(filePath);
+      if (loadGenRef.current !== gen) return; // superseded by a newer load
       sync.markLoaded(filePath, text);
+      loadedPathRef.current = filePath;
       setContent(text);
       setError(null);
     } catch (e) {
+      if (loadGenRef.current !== gen) return;
       setError(String(e));
     } finally {
-      setLoading(false);
+      if (loadGenRef.current === gen) setLoading(false);
     }
   }, [filePath, sync]);
 
@@ -38,6 +47,9 @@ export function useRawFile(filePath: string, sync: FileSync) {
 
   const onChange = useCallback(
     (next: string) => {
+      // Ignore edits until this file's content has actually loaded for `filePath` (mid
+      // tab-switch the editor still shows the previous file) — writing now would drift.
+      if (loadedPathRef.current !== filePath) return;
       setContent(next);
       sync.markDirty(filePath);
       if (saveTimer.current) clearTimeout(saveTimer.current);

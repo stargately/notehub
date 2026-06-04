@@ -27,6 +27,14 @@ export function useProjectFile(
   sync?: FileSync,
 ) {
   const [projectData, setProjectData] = useState<ProjectData | null>(null);
+  // The path `projectData` was actually loaded from (null for the untitled template).
+  // Saves are gated on this matching `filePath` so a tab switch / null-path window can't
+  // persist one file's data — or the default template — onto another file. See `saveProject`.
+  const [loadedPath, setLoadedPath] = useState<string | null>(null);
+  const loadedPathRef = useRef<string | null>(null);
+  // Monotonic token so an out-of-order `loadFile` (slow read landing after a newer one)
+  // can't clobber `projectData`/`loadedPath` with stale data.
+  const loadGenRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,18 +48,23 @@ export function useProjectFile(
 
   // Load and parse the file (or default template for untitled)
   const loadFile = useCallback(async () => {
+    const gen = ++loadGenRef.current;
     try {
       setLoading(true);
       const content = filePath ? await readFile(filePath) : getDefaultProjectContent();
+      if (loadGenRef.current !== gen) return; // superseded by a newer load
       if (filePath) syncRef.current?.markLoaded(filePath, content);
       const data = parseProjectMd(content);
+      loadedPathRef.current = filePath;
+      setLoadedPath(filePath);
       setProjectData(data);
       onDataLoadedRef.current?.(data);
       setError(null);
     } catch (e) {
+      if (loadGenRef.current !== gen) return;
       setError(String(e));
     } finally {
-      setLoading(false);
+      if (loadGenRef.current === gen) setLoading(false);
     }
   }, [filePath]);
 
@@ -59,12 +72,29 @@ export function useProjectFile(
     loadFile();
   }, [loadFile]);
 
+  // On unmount (tab close), cancel any pending autosave so a debounced write can't recreate a
+  // file that was just deleted/closed. Switching tabs no longer unmounts the active doc's view
+  // mid-debounce — each tab is a separate, kept-mounted DocumentView — so the timer fires
+  // normally while a tab stays open.
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
+
   // Save project data back to file (debounced). For untitled (null filePath), just update state.
   const onBeforeSaveRef = useRef(onBeforeSave);
   onBeforeSaveRef.current = onBeforeSave;
 
   const saveProject = useCallback(
     (data: ProjectData) => {
+      // Refuse to record or persist data that wasn't loaded from the current file. During
+      // a tab switch (or while `filePath` is momentarily null and the default "Untitled
+      // Project" template is loaded) `projectData` still belongs to the previous file; a
+      // spurious save here would clobber `filePath` with the wrong content. The untitled
+      // case (filePath === null, loadedPath === null) is allowed through so the new-doc
+      // template stays editable in memory — it just never reaches disk (`if (!filePath)`).
+      if (filePath && loadedPathRef.current !== filePath) return;
       if (onBeforeSaveRef.current) {
         onBeforeSaveRef.current(data);
       }
@@ -193,6 +223,8 @@ export function useProjectFile(
   // Immediately flush any pending debounced save
   const flushSave = useCallback(async () => {
     if (!filePath || !projectData) return;
+    // Same stale-data guard as saveProject: never flush another file's data onto this path.
+    if (loadedPathRef.current !== filePath) return;
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
@@ -209,6 +241,7 @@ export function useProjectFile(
 
   return {
     filePath,
+    loadedPath,
     projectDir,
     projectData,
     loading,
