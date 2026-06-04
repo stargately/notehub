@@ -27,6 +27,7 @@ notehub/
 │   │   ├── QuickOpen.tsx       # Cmd+P fuzzy file finder overlay (gitignore-aware index)
 │   │   ├── ContextMenu.tsx     # Shared floating menu (FileTree right-click, TabBar, top File menu)
 │   │   ├── ConfirmModal.tsx    # Generic confirm dialog (e.g. move-to-Trash)
+│   │   ├── KeybindingsHelp.tsx # Keyboard-shortcuts reference + user keymap JSON editor
 │   │   ├── RawFileEditor.tsx   # Non-md files: raw Monaco / inline image / binary placeholder
 │   │   ├── cell-renderers/     # AG Grid display components
 │   │   └── cell-editors/       # AG Grid edit components
@@ -45,6 +46,7 @@ notehub/
 │   │   ├── tree-refresh.ts     # file-changed → re-read tree dirs (subscribeDir/subscribeAll bus)
 │   │   ├── fuzzy.ts            # fzy-style fuzzy matcher for Cmd+P (pure, unit-tested)
 │   │   ├── recent-files.ts    # in-memory MRU for Cmd+P empty-query ordering
+│   │   ├── keymap/            # Zed-style keymap: keystroke/context/matcher + provider & hooks
 │   │   ├── milkdown-mermaid.ts # Mermaid SVG node view for Milkdown
 │   │   ├── print.ts            # Render layout: qa to a print cheatsheet HTML
 │   │   └── tauri-api.ts        # Tauri IPC bridge
@@ -104,7 +106,8 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — pure modules under `src/lib/` and hooks under `src/hooks/`
   have unit tests in adjacent `__tests__/` dirs (`markdown-parser`, `qa-parser`, `print`, `tags`,
-  `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`, `recent-files`, `useFileSync`).
+  `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`, `recent-files`, `useFileSync`, and the
+  keymap engine `keymap/__tests__/` — `keystroke`, `context`, `keymap`).
 - **Backend (`cargo test`)** — Rust unit tests live in `#[cfg(test)] mod tests` blocks inside each
   source file. The pattern is **"extract a pure helper, then test it"**: logic that used to be
   buried in thread closures or `AppHandle`-bound IO was factored into pure functions so it can be
@@ -290,18 +293,24 @@ replace still work without it.
 - **Browser fallback**: Runs without Tauri using `sample-project.md` for UI testing
 - **Dark mode**: Class-based (`dark` class), AG Grid + Tailwind themed
 
-## Keyboard Shortcuts
+## Keyboard Shortcuts — the Zed-style keymap
+
+Shortcuts are **data-driven**, not hard-coded. A keymap (`src/lib/keymap/`) maps keystrokes →
+namespaced **actions** within **contexts**; the focused view registers a handler for each action.
+This replaced the old ad-hoc `keydown` listeners (`useKeyboardShortcuts`, `Toolbar`, `QaLayout`,
+`TerminalPanel`). See *Keymap system* below for the architecture. Users can remap anything via
+**File → Keyboard Shortcuts…** (`KeybindingsHelp.tsx`). The default bindings:
 
 - `Cmd+R` — Reload file
-- `Cmd+F` — Focus filter
-- `Cmd+N` — New task
+- `Cmd+N` — New task (Grid context)
 - `Cmd+S` — Save (Save As for untitled)
 - `Cmd+/` — Toggle raw markdown editor (formatted WYSIWYG ↔ raw for `layout: qa`)
 - `Cmd+F` — In the task view, focus the filter (Toolbar). In the `layout: qa` view, open the
-  Find & replace bar (whole-document search; `Enter`/`Shift+Enter` navigate, `Esc` closes).
-- `Cmd+P` — Open the quick-open fuzzy file finder (`QuickOpen.tsx`) over the workspace. Handled in
-  the global `useKeyboardShortcuts` (gated on `!shiftKey` so it never steals Cmd+Shift+P print).
-- `Cmd+O` — Open a file via the OS dialog (mirrors the File menu's "Open File…"; `openFile: handleAddTab`).
+  Find & replace bar (whole-document search; `Enter`/`Shift+Enter` navigate, `Esc` closes). Same
+  key, different action per context (`grid::FocusFilter` vs `editor::Find`).
+- `Cmd+P` — Open the quick-open fuzzy file finder (`QuickOpen.tsx`) over the workspace. `mod-p`
+  binds with `shift` off, so `Cmd+Shift+P` (print) is a distinct binding, not a manual `!shiftKey` check.
+- `Cmd+O` — Open a file via the OS dialog (`file::Open` → `handleAddTab`).
 - `Cmd+Shift+P` — Print the `layout: qa` doc (compact cheatsheet, letter size, two columns +
   diagrams). WKWebView has no working `window.print()`, so `src/lib/print.ts` renders the markdown
   to a self-contained HTML (via `marked` + light-theme mermaid) and the Rust `print_html` command
@@ -310,10 +319,44 @@ replace still work without it.
   the browser's "Save as PDF" defaults to a name consistent with the file on disk. The handler lives
   in `QaLayout.tsx` (mounted only for `qa`/plain docs).
 - `Cmd+B` — Toggle the workspace file-tree sidebar
-- `Cmd+1-9` — Switch tabs
+- `Cmd+1-9` — Switch tabs (`workspace::ActivateTab` with the index as the action arg)
 - `Ctrl+`` `` — Toggle terminal
-- `Cmd+D` — Split the active terminal pane side-by-side (only when terminal focused)
-- `Escape` — Close detail drawer
+- `Cmd+D` — Split the active terminal pane side-by-side (Terminal context — only when focused)
+- `Escape` — Close detail drawer / modals (component-local, not keymap-routed)
+
+### Keymap system (`src/lib/keymap/`)
+
+A small Zed-inspired engine, split into pure (unit-tested) modules + a React layer:
+
+- **`keystroke.ts`** — parse `cmd-shift-p` / `ctrl-\`` / chord sequences (`mod-k mod-s`) and
+  normalize a `KeyboardEvent` to the same canonical form. `mod` is the platform accelerator
+  (matches **Meta OR Ctrl**, preserving the old `e.metaKey || e.ctrlKey` behavior). `formatSequence`
+  renders `⌘⇧P` (mac) / `Ctrl+Shift+P` (else) for the UI. Strict modifier matching cleanly separates
+  `mod-p` from `mod-shift-p`.
+- **`context.ts`** — a tiny predicate parser/evaluator (`!`, `&&`, `||`, parens, identifiers) run
+  against the set of active context names; empty predicate matches everywhere.
+- **`keymap.ts`** — compile a keymap (ordered `{context?, bindings}` blocks) and `resolve(contexts,
+  pressedKeystrokes)` → `action | pending | none`. Precedence: context-bearing beats context-less,
+  then later-declared wins (so user overrides win); `null` unbinds; strict-prefix matches return
+  `pending` (chords).
+- **`actions.ts`** (`ACTIONS`, `CONTEXTS` constants), **`default-keymap.ts`** (the single source of
+  truth for default bindings), **`user-keymap.ts`** (localStorage `nh-keymap` JSON, parsed +
+  validated, layered after defaults).
+- **`provider.tsx`** — `KeymapProvider` (wraps the app in `main.tsx`) hosts the one window `keydown`
+  dispatcher: builds the active context set from contributed contexts (+ always `Workspace`),
+  buffers chords with a timeout, resolves, and calls the **most-recently-registered** handler for
+  the action (the focused view). Hooks: `useKeymapAction(name, handler)` (register a handler;
+  focused/last wins via a stack), `useKeymapContext(name, active)` (contribute a context while
+  active), `useKeymapApi()` (for the editor UI). Decoupling key→action (keymap) from action→handler
+  (registry) is the Zed model — `App` owns global actions + the Grid/Editor/QA/RawFile contexts;
+  `Toolbar`/`QaLayout`/`TerminalPanel` register their own actions (and `TerminalPanel` contributes
+  the `Terminal` context when focus is inside the panel).
+- **`KeybindingsHelp.tsx`** — File → Keyboard Shortcuts…: lists the effective merged keymap grouped
+  by context (pretty keystrokes) and a JSON editor for user overrides (save → localStorage / reset).
+- **Editor bridging**: Monaco still re-dispatches `Cmd+/`, `Cmd+S`, `Cmd+B` as synthetic window
+  `keydown`s (`MarkdownEditor.tsx`) which the keymap dispatcher then handles — unchanged. Truly
+  element-local keys (Enter/Esc/arrows in QuickOpen, find bar, inline rename, modals) stay component
+  handlers; the keymap only routes the modifier-accelerator actions, so it never steals typing.
 
 ## Integrated Terminal — tabs & split panes
 

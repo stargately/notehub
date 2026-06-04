@@ -12,6 +12,7 @@ interface MenuBarProps {
   onQuickOpen: () => void;
   onSave: () => void;
   onRefresh: () => void;
+  onOpenKeymap: () => void;
 }
 
 /**
@@ -29,6 +30,7 @@ export function MenuBar({
   onQuickOpen,
   onSave,
   onRefresh,
+  onOpenKeymap,
 }: MenuBarProps) {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const fileBtnRef = useRef<HTMLButtonElement>(null);
@@ -55,6 +57,7 @@ export function MenuBar({
     { label: "Quick Open…", shortcut: "⌘P", separatorBefore: true, onClick: onQuickOpen },
     { label: "Save", shortcut: "⌘S", separatorBefore: true, onClick: onSave, disabled: !canSave },
     { label: "Refresh File Tree", separatorBefore: true, onClick: onRefresh, disabled: !hasWorkspace },
+    { label: "Keyboard Shortcuts…", separatorBefore: true, onClick: onOpenKeymap },
   ];
 
   return (

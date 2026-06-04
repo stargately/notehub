@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback, useState, Fragment } from "react";
 import { TerminalView } from "./TerminalView";
+import { useKeymapAction, useKeymapContext } from "../lib/keymap/provider";
+import { ACTIONS, CONTEXTS } from "../lib/keymap/actions";
 
 interface TerminalPanelProps {
   visible: boolean;
@@ -124,20 +126,26 @@ export function TerminalPanel({ visible, cwd, onClose }: TerminalPanelProps) {
     [activeTabId, activePaneId, makeTab]
   );
 
-  // Cmd+D to split — only while the terminal panel is visible and focused,
-  // so it never hijacks Cmd+D from the editor/grid.
+  // Cmd+D to split — only while the terminal panel is visible AND focused, so it never hijacks
+  // Cmd+D from the editor/grid. Modeled as a keymap "Terminal" context (active when focus is
+  // inside the panel) + the `terminal::SplitPane` action.
+  const [terminalFocused, setTerminalFocused] = useState(false);
   useEffect(() => {
-    if (!visible) return;
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "d") {
-        if (!panelRootRef.current?.contains(document.activeElement)) return;
-        e.preventDefault();
-        splitActivePane();
-      }
+    if (!visible) {
+      setTerminalFocused(false);
+      return;
+    }
+    const update = () => setTerminalFocused(!!panelRootRef.current?.contains(document.activeElement));
+    update();
+    document.addEventListener("focusin", update);
+    document.addEventListener("focusout", update);
+    return () => {
+      document.removeEventListener("focusin", update);
+      document.removeEventListener("focusout", update);
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [visible, splitActivePane]);
+  }, [visible]);
+  useKeymapContext(CONTEXTS.terminal, visible && terminalFocused);
+  useKeymapAction(ACTIONS.splitTerminal, () => splitActivePane());
 
   // --- Panel height drag handle -------------------------------------------
 

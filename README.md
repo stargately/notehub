@@ -247,6 +247,13 @@ prompt.
 
 ## Keyboard Shortcuts
 
+Shortcuts are driven by a **Zed-style keymap** — keystrokes map to actions within contexts (the
+same key can do different things in the task grid vs. the markdown editor). Open **File → Keyboard
+Shortcuts…** to see the full list and **remap anything**: add a JSON block of overrides (layered
+over the defaults; chords like `mod-k mod-s` and `null`-to-unbind are supported), saved locally.
+
+The defaults:
+
 | Shortcut | Action |
 |----------|--------|
 | `Cmd+N` | New task |

@@ -4,10 +4,13 @@ import { Buffer } from "buffer";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { KeymapProvider } from "./lib/keymap/provider";
 import "./styles/globals.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <KeymapProvider>
+      <App />
+    </KeymapProvider>
   </React.StrictMode>
 );

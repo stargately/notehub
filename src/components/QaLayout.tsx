@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { useKeymapAction } from "../lib/keymap/provider";
+import { ACTIONS } from "../lib/keymap/actions";
 import { MarkdownWysiwyg } from "./MarkdownWysiwyg";
 import { QaFindBar } from "./QaFindBar";
 import { ThemeIcon } from "./ThemeIcon";
@@ -92,22 +94,10 @@ export function QaLayout({
     clearHighlights();
   };
 
-  // Cmd/Ctrl+Shift+P prints (plain Cmd+P is the global quick-open finder); Cmd/Ctrl+F opens
-  // the find bar (and suppresses the WKWebView native find, which doesn't work in the embedded
-  // webview anyway).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "p" || e.key === "P")) {
-        e.preventDefault();
-        printRef.current();
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
-        e.preventDefault();
-        setFindOpen(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Cmd+Shift+P prints; Cmd+F opens the find bar (suppressing the broken WKWebView native find).
+  // Both are dispatched by the global keymap while the QA editor is the active context.
+  useKeymapAction(ACTIONS.print, () => printRef.current());
+  useKeymapAction(ACTIONS.find, () => setFindOpen(true));
 
   // Recompute matches when the query/case/open-state changes, and after the editors
   // remount (mountKey bumps on external change *and* on our own replace commits). The

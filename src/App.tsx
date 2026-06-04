@@ -9,7 +9,8 @@ import { useWorkspace } from "./hooks/useWorkspace";
 import { useFileIndex } from "./hooks/useFileIndex";
 import { useViewMode } from "./hooks/useViewMode";
 import { useTaskFilters } from "./hooks/useTaskFilters";
-import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useKeymapAction, useKeymapContext } from "./lib/keymap/provider";
+import { ACTIONS, CONTEXTS } from "./lib/keymap/actions";
 import { useUndoHistory } from "./hooks/useUndoHistory";
 import { useAutoUpdate } from "./hooks/useAutoUpdate";
 import { isTauri } from "./lib/tauri-api";
@@ -30,6 +31,7 @@ import { Sidebar } from "./components/Sidebar";
 import { MenuBar } from "./components/MenuBar";
 import type { FileTreeHandle } from "./components/FileTree";
 import { QuickOpen } from "./components/QuickOpen";
+import { KeybindingsHelp } from "./components/KeybindingsHelp";
 import { QaLayout } from "./components/QaLayout";
 import { deriveBaseName } from "./lib/print";
 import { ConflictModal } from "./components/ConflictModal";
@@ -47,6 +49,7 @@ function App() {
   const [terminalMounted, setTerminalMounted] = useState(false);
   const [highlightTaskId, setHighlightTaskId] = useState<string | null>(null);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
+  const [keymapHelpOpen, setKeymapHelpOpen] = useState(false);
 
   const { darkMode, themeMode, cycleThemeMode } = useDarkMode();
   const undoHistory = useUndoHistory();
@@ -212,20 +215,55 @@ function App() {
     handleToggleViewMode();
   }, [isRawFile, handleToggleViewMode]);
 
-  useKeyboardShortcuts({
-    loadFile, handleSave: onSave, handleToggleViewMode: onToggleView,
-    tabs, setActiveTabId, activeFilePath,
-    setShowTerminal, setTerminalMounted,
-    undoHistory, activeTabId, viewMode, replaceFromRaw,
-    flushPendingSnapshot, toggleSidebar,
-    openQuickOpen: () => setQuickOpenOpen(true),
-    openFile: handleAddTab,
-  });
-
   const isQa = projectData?.meta.layout === "qa";
   // "raw unless todo": both `layout: qa` and plain (no-layout) docs are edited as raw
   // markdown via QaLayout — only `layout: todo` round-trips through the task serializer.
   const isRawDoc = !!projectData && projectData.meta.layout !== "todo";
+
+  // ── Keymap (Zed-style) ── which UI region is active (contexts) + the action handlers App owns.
+  // Bindings live in src/lib/keymap/default-keymap.ts; views (Toolbar/QaLayout/TerminalPanel)
+  // register their own actions + contexts.
+  useKeymapContext(CONTEXTS.grid, !!projectData && !isRawDoc && !isRawFile && viewMode === "grid");
+  useKeymapContext(CONTEXTS.editor, !!projectData && !isRawDoc && !isRawFile && viewMode === "editor");
+  useKeymapContext(CONTEXTS.qa, !!projectData && isRawDoc && !isRawFile);
+  useKeymapContext(CONTEXTS.rawFile, isRawFile);
+
+  useKeymapAction(ACTIONS.quickOpen, () => setQuickOpenOpen(true));
+  useKeymapAction(ACTIONS.openFile, () => void handleAddTab());
+  useKeymapAction(ACTIONS.toggleSidebar, () => toggleSidebar());
+  useKeymapAction(ACTIONS.toggleTerminal, () => {
+    setShowTerminal((prev) => !prev);
+    setTerminalMounted(true);
+  });
+  useKeymapAction(ACTIONS.reload, () => loadFile());
+  useKeymapAction(ACTIONS.save, () => onSave());
+  useKeymapAction(ACTIONS.toggleRawView, () => onToggleView());
+  useKeymapAction(ACTIONS.copyPath, () => {
+    if (activeFilePath) navigator.clipboard.writeText(activeFilePath);
+  });
+  useKeymapAction(ACTIONS.activateTab, (arg) => {
+    const idx = typeof arg === "number" ? arg : 0;
+    if (idx >= 0 && idx < tabs.length) setActiveTabId(tabs[idx].id);
+  });
+  useKeymapAction(ACTIONS.undo, () => {
+    if (!activeTabId || !replaceFromRaw) return;
+    flushPendingSnapshot?.();
+    const snapshot = undoHistory.undo(activeTabId);
+    if (snapshot) {
+      undoHistory.suppressNextPush();
+      replaceFromRaw(snapshot);
+    }
+  });
+  useKeymapAction(ACTIONS.redo, () => {
+    if (!activeTabId || !replaceFromRaw) return;
+    flushPendingSnapshot?.();
+    const snapshot = undoHistory.redo(activeTabId);
+    if (snapshot) {
+      undoHistory.suppressNextPush();
+      replaceFromRaw(snapshot);
+    }
+  });
+  useKeymapAction(ACTIONS.openKeymap, () => setKeymapHelpOpen(true));
 
   // File watcher for external changes → reconcile against disk. `currentBytes` is what
   // we'd write right now (used as "mine" if there's a conflict); `loadFile` re-reads and
@@ -309,6 +347,7 @@ function App() {
         onOpenFile={openPath}
         onOpenFolder={openFolder}
       />
+      <KeybindingsHelp open={keymapHelpOpen} onClose={() => setKeymapHelpOpen(false)} />
       {isTauri && (
         <MenuBar
           workspaceRoot={workspaceRoot}
@@ -320,6 +359,7 @@ function App() {
           onQuickOpen={() => setQuickOpenOpen(true)}
           onSave={onSave}
           onRefresh={refreshAllDirs}
+          onOpenKeymap={() => setKeymapHelpOpen(true)}
         />
       )}
       <div className="flex-1 flex flex-row overflow-hidden">

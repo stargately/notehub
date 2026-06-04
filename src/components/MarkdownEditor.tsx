@@ -66,7 +66,7 @@ export function MarkdownEditor({ content, onChange, darkMode, language = "markdo
       }
     );
 
-    // Bridge Cmd+/ and Cmd+S to DOM so useKeyboardShortcuts catches them
+    // Bridge Cmd+/ and Cmd+S to DOM so the global keymap dispatcher catches them
     editor.addCommand(
       // eslint-disable-next-line no-bitwise
       monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash,

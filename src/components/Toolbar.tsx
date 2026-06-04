@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import type { ProjectMeta, WeekFilter } from "../lib/types";
 import type { ThemeMode } from "../hooks/useDarkMode";
 import { ThemeIcon } from "./ThemeIcon";
+import { useKeymapAction } from "../lib/keymap/provider";
+import { ACTIONS } from "../lib/keymap/actions";
 
 interface ToolbarProps {
   meta: ProjectMeta;
@@ -38,22 +40,10 @@ export function Toolbar({
 }: ToolbarProps) {
   const [filterFocused, setFilterFocused] = useState(false);
 
-  // Keyboard shortcut: Cmd/Ctrl+F to focus filter
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
-        e.preventDefault();
-        const input = document.getElementById("filter-input");
-        input?.focus();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === "n") {
-        e.preventDefault();
-        onAddTask();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onAddTask]);
+  // Cmd+F focuses the filter, Cmd+N adds a task — dispatched by the keymap in the Grid context
+  // (the Toolbar only renders in the task-table view).
+  useKeymapAction(ACTIONS.focusFilter, () => document.getElementById("filter-input")?.focus());
+  useKeymapAction(ACTIONS.newTask, () => onAddTask());
 
   return (
     <div
