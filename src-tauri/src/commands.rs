@@ -297,6 +297,104 @@ pub fn set_workspace_root(
     Ok(())
 }
 
+/// Logical (CSS-pixel) outer bounds of a window — its position + size on the virtual screen,
+/// in the same coordinate space as DOM `MouseEvent.screenX/screenY` so the frontend can decide
+/// whether a tab was released outside the window (tab tear-off).
+#[derive(Serialize)]
+pub struct WindowRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Return the calling window's outer rect in logical pixels. `outer_position`/`outer_size` are
+/// physical in Tauri v2; dividing by the scale factor matches DOM screen coords on HiDPI displays.
+#[tauri::command]
+pub fn get_window_rect(window: tauri::WebviewWindow) -> Result<WindowRect, String> {
+    let scale = window.scale_factor().map_err(|e| e.to_string())?;
+    let pos = window
+        .outer_position()
+        .map_err(|e| e.to_string())?
+        .to_logical::<f64>(scale);
+    let size = window
+        .outer_size()
+        .map_err(|e| e.to_string())?
+        .to_logical::<f64>(scale);
+    Ok(WindowRect {
+        x: pos.x,
+        y: pos.y,
+        width: size.width,
+        height: size.height,
+    })
+}
+
+/// Where to place a torn-off window so its title bar lands roughly under the cursor: nudge the
+/// release point up/left a little, clamped to the visible origin. Pure for unit testing.
+fn title_bar_anchor(screen_x: f64, screen_y: f64) -> (f64, f64) {
+    ((screen_x - 60.0).max(0.0), (screen_y - 12.0).max(0.0))
+}
+
+/// Remove and return the files stashed for `label` (empty if none). Pure for unit testing.
+fn drain_window_files(map: &mut HashMap<String, Vec<String>>, label: &str) -> Vec<String> {
+    map.remove(label).unwrap_or_default()
+}
+
+/// Open `path` in a brand-new window near the release point — tab tear-off. Unlike
+/// `open_workspace_window` this carries a *file* (not a folder): the file is stashed under the new
+/// window's label in `AppState.window_files` and drained by `get_window_files` when that window
+/// mounts. The new window adopts no workspace folder, so folder dedup is untouched. Returns the
+/// new window label.
+#[tauri::command]
+pub async fn detach_tab(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    screen_x: f64,
+    screen_y: f64,
+) -> Result<String, String> {
+    let canonical = fs::canonicalize(&path)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or(path);
+
+    let id = state.window_counter.fetch_add(1, Ordering::SeqCst);
+    let label = format!("workspace-{}", id);
+    state
+        .window_files
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(label.clone(), vec![canonical]);
+
+    let (x, y) = title_bar_anchor(screen_x, screen_y);
+    WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .title("NoteHub")
+        .inner_size(1200.0, 800.0)
+        .min_inner_size(800.0, 500.0)
+        .position(x, y)
+        .build()
+        .map_err(|e| {
+            // Roll back the stash so a failed build doesn't leak an entry.
+            if let Ok(mut m) = state.window_files.lock() {
+                m.remove(&label);
+            }
+            format!("Failed to open window: {}", e)
+        })?;
+
+    Ok(label)
+}
+
+/// Files a freshly-spawned window should open on mount (tab tear-off). Drains the entry so it's
+/// consumed exactly once; empty for normal folder-workspace windows.
+#[tauri::command]
+pub fn get_window_files(
+    window: tauri::WebviewWindow,
+    state: State<AppState>,
+) -> Result<Vec<String>, String> {
+    let label = window.label().to_string();
+    let mut map = state.window_files.lock().map_err(|e| e.to_string())?;
+    Ok(drain_window_files(&mut map, &label))
+}
+
 #[tauri::command]
 pub fn note_recent_document(app: AppHandle, path: String) {
     crate::recent_docs::note(&app, path);
@@ -492,13 +590,34 @@ pub fn kill_terminal(state: State<TerminalState>, session_id: u32) -> Result<(),
 #[cfg(test)]
 mod tests {
     use super::{
-        canonicalize, create_dir, create_file, find_window_for_workspace, is_directory,
-        is_noise_dir, is_valid_filename, looks_binary, print_basename, read_dir, read_file,
-        read_text_file, rel_path, rename_path, sort_dir_entries, walk_files, write_file,
-        DirEntryInfo,
+        canonicalize, create_dir, create_file, drain_window_files, find_window_for_workspace,
+        is_directory, is_noise_dir, is_valid_filename, looks_binary, print_basename, read_dir,
+        read_file, read_text_file, rel_path, rename_path, sort_dir_entries, title_bar_anchor,
+        walk_files, write_file, DirEntryInfo,
     };
     use std::collections::HashMap;
     use std::path::Path;
+
+    #[test]
+    fn drain_window_files_returns_entry_once_then_empty() {
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        map.insert("workspace-2".into(), vec!["/a.md".into()]);
+        assert_eq!(
+            drain_window_files(&mut map, "workspace-2"),
+            vec!["/a.md".to_string()]
+        );
+        // Consumed — a second drain (e.g. a reload) yields nothing.
+        assert!(drain_window_files(&mut map, "workspace-2").is_empty());
+        // Unknown label → empty.
+        assert!(drain_window_files(&mut map, "workspace-9").is_empty());
+    }
+
+    #[test]
+    fn title_bar_anchor_offsets_and_clamps() {
+        assert_eq!(title_bar_anchor(300.0, 200.0), (240.0, 188.0));
+        // Near the screen origin, the offset is clamped to 0 (never off-screen).
+        assert_eq!(title_bar_anchor(10.0, 5.0), (0.0, 0.0));
+    }
 
     #[tokio::test]
     async fn write_then_read_round_trips() {

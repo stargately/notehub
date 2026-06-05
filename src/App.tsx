@@ -7,7 +7,8 @@ import { useKeymapAction } from "./lib/keymap/provider";
 import { ACTIONS } from "./lib/keymap/actions";
 import { useUndoHistory } from "./hooks/useUndoHistory";
 import { useAutoUpdate } from "./hooks/useAutoUpdate";
-import { isTauri } from "./lib/tauri-api";
+import { isTauri, getWindowRect } from "./lib/tauri-api";
+import { isReleaseOutsideWindow } from "./lib/tear-off";
 import { refreshAllDirs } from "./lib/tree-refresh";
 import { TabBar } from "./components/TabBar";
 import { TerminalPanel } from "./components/TerminalPanel";
@@ -60,7 +61,7 @@ function App() {
     tabs, setTabs, activeTabId, setActiveTabId, initialized,
     activeFilePath, terminalCwd,
     handleAddTab, handleCloseTab, handleSelectTab, openPath,
-    renameTabPath, closeTabByPath,
+    renameTabPath, closeTabByPath, detachTab,
   } = useTabManagement({
     workspaceRoot,
     workspaceReady,
@@ -89,6 +90,21 @@ function App() {
     if (!activeTabId) return;
     setEverActive((prev) => (prev.has(activeTabId) ? prev : new Set(prev).add(activeTabId)));
   }, [activeTabId]);
+
+  // Tab tear-off: a tab dropped outside this window's bounds moves into a new window.
+  const handleDetachTab = useCallback(
+    async (tabId: string, screenX: number, screenY: number) => {
+      try {
+        const rect = await getWindowRect();
+        if (isReleaseOutsideWindow(screenX, screenY, rect)) {
+          await detachTab(tabId, screenX, screenY);
+        }
+      } catch {
+        /* geometry unavailable (e.g. non-Tauri) → treat as in-window, no-op */
+      }
+    },
+    [detachTab],
+  );
 
   // ── Global (workspace-level) keymap actions. Per-doc actions delegate to the active tab. ──
   useKeymapAction(ACTIONS.quickOpen, () => setQuickOpenOpen(true));
@@ -177,6 +193,7 @@ function App() {
               onSelectTab={handleSelectTab}
               onCloseTab={handleCloseTab}
               onAddTab={handleAddTab}
+              onDetachTab={handleDetachTab}
             />
           )}
 

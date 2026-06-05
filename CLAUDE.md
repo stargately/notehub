@@ -47,6 +47,7 @@ notehub/
 │   │   ├── tree-refresh.ts     # file-changed → re-read tree dirs (subscribeDir/subscribeAll bus)
 │   │   ├── fuzzy.ts            # fzy-style fuzzy matcher for Cmd+P (pure, unit-tested)
 │   │   ├── recent-files.ts    # in-memory MRU for Cmd+P empty-query ordering
+│   │   ├── tear-off.ts        # pure predicate: was a dragged tab released outside the window?
 │   │   ├── keymap/            # Zed-style keymap: keystroke/context/matcher + provider & hooks
 │   │   ├── milkdown-mermaid.ts # Mermaid SVG node view for Milkdown
 │   │   ├── print.ts            # Render layout: qa to a print cheatsheet HTML
@@ -107,8 +108,10 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — pure modules under `src/lib/`, hooks under `src/hooks/`, and a
   few components have unit/integration tests in adjacent `__tests__/` dirs (`markdown-parser`,
-  `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`,
-  `recent-files`, `useFileSync`, `useProjectFile`, `useViewMode`, `useRawFile` — these lock in the
+  `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`, `tear-off`
+  (`isReleaseOutsideWindow`), `recent-files`, `useFileSync`, `useProjectFile`, `useViewMode`,
+  `useRawFile`, `useTabManagement` (startup/close + tab tear-off: spawned-window file restore and
+  `detachTab` move-or-keep-on-failure) — these lock in the
   loaded-path guard that stops one tab's content from being written onto another file and the editor
   never being seeded from a stale `projectData`; `components/__tests__/DocumentView` renders two real
   per-tab `DocumentView`s with the heavy editors stubbed and asserts edits route to each tab's own
@@ -127,7 +130,8 @@ npm run fmt:rust:check # cargo fmt -- --check
     `workspace_root`), plus `is_markdown_file` and `write_atomic` (tested against a `tempfile` temp
     dir; `tempfile` is a dev-dependency)
   - `commands.rs` → `print_basename` (PDF filename sanitization), `sort_dir_entries`,
-    `is_noise_dir`, `looks_binary`, `find_window_for_workspace`, `rel_path` + `walk_files` (the
+    `is_noise_dir`, `looks_binary`, `find_window_for_workspace`, `drain_window_files` +
+    `title_bar_anchor` (tab tear-off helpers), `rel_path` + `walk_files` (the
     gitignore-aware index walker, driven by a tempdir with a `.gitignore`), `is_valid_filename`,
     plus the async `read_file` / `write_file` / `read_dir` / `read_text_file` / `create_file` /
     `create_dir` / `rename_path` commands round-tripped through a temp dir (`#[tokio::test]`)
@@ -416,6 +420,19 @@ no longer forces one tab to remain; `activeTabId` becomes `""`). New `.md` files
 when restoring an in-memory buffer for a path that is momentarily `null` (e.g. a raw-file tab), never
 on disk.
 
+**Tab tear-off (drag a tab out → new window)**: dragging a tab out of the window and releasing
+outside its bounds moves that document into a fresh window (Zed-style, move semantics). Detection
+uses **native HTML5 drag** (each tab is `draggable`; `onDragEnd` carries the release point as logical
+`screenX/screenY`) — chosen over pointer capture because WKWebView doesn't reliably deliver
+`pointerup` once the cursor leaves the window. `App.handleDetachTab` fetches the window's outer rect
+from Rust (`get_window_rect`, logical px via `scale_factor`) and, if `isReleaseOutsideWindow`
+(`src/lib/tear-off.ts`, pure/unit-tested) is true, calls `useTabManagement.detachTab` → the
+`detach_tab` command spawns a `workspace-{n}` window positioned near the cursor, stashing the file in
+`AppState.window_files`; the source tab is then closed (`handleCloseTab`). The new window drains its
+file(s) via `get_window_files` on mount (the spawned-window branch of `useTabManagement` opens them;
+it adopts no workspace folder, so folder-dedup is untouched). Untitled / `browser://` tabs aren't
+draggable; geometry lives in Rust so **no `core:window:*` capability** is needed.
+
 Entry points: the **File → Open Folder…** menu item (or the sidebar's empty-state **Open Folder**
 button) — both call `openFolderDialog` via `useWorkspace.openFolder`; **dragging a folder
 into the window** (`useTabManagement` drag-drop splits dirs from files via the `is_directory`
@@ -448,6 +465,11 @@ tree file live-reloads on external edits.
     `AppState.workspace_windows`. The new window fetches its root via `get_window_workspace`.
   - `set_workspace_root(path)` records a folder adopted in-place (so dedup works). `save_session`
     persists `workspaceRoot` in `session.json`; `reconcile_session` drops it if the dir is gone.
+  - **Tab tear-off**: `detach_tab(path, screen_x, screen_y)` spawns a `workspace-{n}` window near
+    the release point (pure `title_bar_anchor` offset/clamp) and stashes the file in
+    `AppState.window_files`; `get_window_files()` drains it for the new window on mount (pure
+    `drain_window_files`); `get_window_rect()` returns the caller's outer bounds in logical px
+    (`outer_position`/`outer_size` ÷ `scale_factor`) for the outside-the-window test.
   - **Capabilities** (`capabilities/default.json`) apply to `["main", "workspace-*"]` — spawned
     windows would otherwise have zero permissions. Inline image preview needs the asset protocol
     (`tauri.conf.json` `app.security.assetProtocol` + the `protocol-asset` Cargo feature).

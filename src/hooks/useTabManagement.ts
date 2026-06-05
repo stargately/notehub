@@ -9,6 +9,8 @@ import {
   isDirectory,
   canonicalizePath,
   startWatching,
+  getWindowFiles,
+  detachTab as detachTabApi,
 } from "../lib/tauri-api";
 import { fileKindForPath } from "../lib/file-kind";
 import { parentDir, isUnderRoot } from "../lib/tree-refresh";
@@ -72,8 +74,15 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
       if (cancelled) return;
       setIsMainWindow(main);
       if (!main) {
-        setTabs([]);
-        setActiveTabId("");
+        // A spawned window opens any files torn off into it (tab tear-off); a plain
+        // folder-workspace window gets none and starts empty (its folder comes from useWorkspace).
+        const files = await getWindowFiles();
+        if (cancelled) return;
+        const canonical = await Promise.all(files.map((p) => canonicalizePath(p)));
+        if (cancelled) return;
+        const fresh = canonical.map(makeTab);
+        setTabs(fresh);
+        setActiveTabId(fresh.length > 0 ? fresh[0].id : "");
         setInitialized(true);
         return;
       }
@@ -214,6 +223,23 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
     [handleCloseTab],
   );
 
+  // Tear a tab off into a new window at the release point, then close it here (move semantics).
+  // Only real on-disk files detach (untitled / browser:// tabs have nothing to open elsewhere).
+  // If the new window fails to build we keep the source tab (no data loss).
+  const detachTab = useCallback(
+    async (tabId: string, screenX: number, screenY: number) => {
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (!tab?.filePath || tab.filePath.startsWith("browser://")) return;
+      try {
+        await detachTabApi(tab.filePath, screenX, screenY);
+        handleCloseTab(tabId);
+      } catch {
+        /* window build failed — leave the tab where it is */
+      }
+    },
+    [handleCloseTab],
+  );
+
   // Drag-and-drop markdown files to open as tabs
   useEffect(() => {
     if (!isTauri) return;
@@ -257,6 +283,6 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
     tabs, setTabs, activeTabId, setActiveTabId, initialized,
     activeFilePath, terminalCwd,
     handleAddTab, handleCloseTab, handleSelectTab, openPath,
-    renameTabPath, closeTabByPath,
+    renameTabPath, closeTabByPath, detachTab,
   };
 }

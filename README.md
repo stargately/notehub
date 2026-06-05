@@ -189,6 +189,9 @@ The tree shows everything except noise directories (`.git`, `node_modules`, `.DS
 put), and re-opening a folder already open just focuses its window. The last folder is remembered
 and reopened on launch. Requires the desktop app (Tauri).
 
+**Tear a tab into its own window:** drag a tab out of the window and drop it anywhere outside — the
+document moves into a new window (just like Zed or a browser). Drop it back inside to cancel.
+
 ### The File menu
 
 A thin **File ▾** menu bar sits at the top of the window (Zed-style). It collects the common file

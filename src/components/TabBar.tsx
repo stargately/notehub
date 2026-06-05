@@ -14,6 +14,8 @@ interface TabBarProps {
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onAddTab: () => void;
+  /** Tab dragged out of the window — release point in logical screen coords (tab tear-off). */
+  onDetachTab: (tabId: string, screenX: number, screenY: number) => void;
 }
 
 export function TabBar({
@@ -22,8 +24,10 @@ export function TabBar({
   onSelectTab,
   onCloseTab,
   onAddTab,
+  onDetachTab,
 }: TabBarProps) {
   const [contextMenu, setContextMenu] = useState<TabContextMenu | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const closeMenu = useCallback(() => setContextMenu(null), []);
 
@@ -44,6 +48,8 @@ export function TabBar({
     >
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId;
+        // Only real on-disk files can tear off into a new window.
+        const detachable = !!tab.filePath && !tab.filePath.startsWith("browser://");
         return (
           <div
             key={tab.id}
@@ -52,11 +58,23 @@ export function TabBar({
               background: isActive ? "var(--nh-bg-elevated)" : "transparent",
               color: isActive ? "var(--nh-text)" : "var(--nh-text-secondary)",
               borderRight: "1px solid var(--nh-border-subtle)",
+              opacity: draggingId === tab.id ? 0.5 : 1,
             }}
             onClick={() => onSelectTab(tab.id)}
             onContextMenu={(e) => {
               e.preventDefault();
               setContextMenu({ x: e.clientX, y: e.clientY, tabId: tab.id });
+            }}
+            draggable={detachable}
+            onDragStart={(e) => {
+              setDraggingId(tab.id);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragEnd={(e) => {
+              setDraggingId(null);
+              // `dragend` fires wherever the user released, with valid logical screen coords even
+              // outside the window. App decides whether that point is outside → tear off.
+              onDetachTab(tab.id, e.screenX, e.screenY);
             }}
           >
             {isActive && (

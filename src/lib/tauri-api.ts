@@ -215,6 +215,25 @@ export async function openWorkspaceWindow(folder: string): Promise<void> {
   await invoke<void>("open_workspace_window", { folder });
 }
 
+/** Tear a tab off into a brand-new window at the release point; returns the new window label. */
+export async function detachTab(path: string, screenX: number, screenY: number): Promise<string> {
+  const invoke = await getInvoke();
+  return invoke<string>("detach_tab", { path, screenX, screenY });
+}
+
+/** Files this (torn-off) window should open on mount — drained server-side; `[]` for normal windows. */
+export async function getWindowFiles(): Promise<string[]> {
+  if (!isTauri) return [];
+  const invoke = await getInvoke();
+  return invoke<string[]>("get_window_files");
+}
+
+/** This window's outer bounds in logical (CSS) pixels — to test whether a drop landed outside it. */
+export async function getWindowRect(): Promise<{ x: number; y: number; width: number; height: number }> {
+  const invoke = await getInvoke();
+  return invoke<{ x: number; y: number; width: number; height: number }>("get_window_rect");
+}
+
 /** Record this window's adopted workspace root (or clear it with null) in the backend map. */
 export async function setWorkspaceRoot(path: string | null): Promise<void> {
   if (!isTauri) return;

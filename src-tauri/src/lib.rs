@@ -26,6 +26,9 @@ pub struct AppState {
     /// Live `window label -> canonical workspace root` map. Lets a spawned window fetch its
     /// folder and powers "re-opening the same folder focuses its window".
     pub workspace_windows: Mutex<HashMap<String, String>>,
+    /// Files a torn-off window should open on first mount, keyed by its window label
+    /// ("workspace-N"). Drained by `get_window_files` once consumed. See `commands::detach_tab`.
+    pub window_files: Mutex<HashMap<String, Vec<String>>>,
     /// Canonical directories that already have a watcher thread, so `ensure_watching` never
     /// spawns a duplicate (would cause double `file-changed` events / reloads).
     pub watched_dirs: Mutex<std::collections::HashSet<String>>,
@@ -172,6 +175,7 @@ pub fn run() {
             }),
             window_counter: AtomicUsize::new(1),
             workspace_windows: Mutex::new(HashMap::new()),
+            window_files: Mutex::new(HashMap::new()),
             watched_dirs: Mutex::new(std::collections::HashSet::new()),
         })
         .manage(terminal::TerminalState::new())
@@ -193,6 +197,9 @@ pub fn run() {
             commands::open_workspace_window,
             commands::get_window_workspace,
             commands::set_workspace_root,
+            commands::detach_tab,
+            commands::get_window_files,
+            commands::get_window_rect,
             commands::print_html,
             commands::start_watching,
             commands::stop_watching,
