@@ -127,27 +127,6 @@ function App() {
     );
   }
 
-  if (tabs.length === 0) {
-    return (
-      <div className="h-screen flex items-center justify-center" style={{ background: "var(--nh-bg)" }}>
-        <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
-        <div className="text-center nh-fade-in">
-          <div className="w-10 h-10 rounded-xl mx-auto mb-4 flex items-center justify-center" style={{ background: "var(--nh-accent-subtle)" }}>
-            <svg className="w-5 h-5" style={{ color: "var(--nh-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <h2 className="text-base font-semibold mb-1" style={{ color: "var(--nh-text)" }}>
-            Welcome to NoteHub
-          </h2>
-          <p className="text-sm" style={{ color: "var(--nh-text-secondary)" }}>
-            Open a .md file to get started.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="nh-app-root h-screen flex flex-col" style={{ background: "var(--nh-bg)" }}>
       <Toaster richColors position="bottom-right" theme={darkMode ? "dark" : "light"} />
@@ -201,29 +180,49 @@ function App() {
             />
           )}
 
-          {/* One mounted DocumentView per (viewed) tab; only the active one is visible. Each owns
-              its own buffer + path + autosave, so one tab can never write onto another's file. */}
-          {tabs.map((tab) =>
-            tab.id === activeTabId || everActive.has(tab.id) ? (
-              <div
-                key={tab.id}
-                className="flex-1 flex flex-col overflow-hidden min-h-0"
-                style={{ display: tab.id === activeTabId ? "flex" : "none" }}
-              >
-                <DocumentView
-                  tabId={tab.id}
-                  filePath={tab.filePath}
-                  kind={tab.kind}
-                  active={tab.id === activeTabId}
-                  darkMode={darkMode}
-                  themeMode={themeMode}
-                  onCycleTheme={cycleThemeMode}
-                  setTabs={setTabs}
-                  undoHistory={undoHistory}
-                  publishCommands={publishCommands}
-                />
+          {tabs.length === 0 ? (
+            // No open tabs — no auto-created untitled doc. The sidebar tree and File menu stay
+            // available to open or create a file.
+            <div className="flex-1 flex items-center justify-center nh-fade-in">
+              <div className="text-center">
+                <div className="w-10 h-10 rounded-xl mx-auto mb-4 flex items-center justify-center" style={{ background: "var(--nh-accent-subtle)" }}>
+                  <svg className="w-5 h-5" style={{ color: "var(--nh-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h2 className="text-base font-semibold mb-1" style={{ color: "var(--nh-text)" }}>
+                  Welcome to NoteHub
+                </h2>
+                <p className="text-sm" style={{ color: "var(--nh-text-secondary)" }}>
+                  Create or open a file from the sidebar or the File menu to get started.
+                </p>
               </div>
-            ) : null
+            </div>
+          ) : (
+            // One mounted DocumentView per (viewed) tab; only the active one is visible. Each owns
+            // its own buffer + path + autosave, so one tab can never write onto another's file.
+            tabs.map((tab) =>
+              tab.id === activeTabId || everActive.has(tab.id) ? (
+                <div
+                  key={tab.id}
+                  className="flex-1 flex flex-col overflow-hidden min-h-0"
+                  style={{ display: tab.id === activeTabId ? "flex" : "none" }}
+                >
+                  <DocumentView
+                    tabId={tab.id}
+                    filePath={tab.filePath}
+                    kind={tab.kind}
+                    active={tab.id === activeTabId}
+                    darkMode={darkMode}
+                    themeMode={themeMode}
+                    onCycleTheme={cycleThemeMode}
+                    setTabs={setTabs}
+                    undoHistory={undoHistory}
+                    publishCommands={publishCommands}
+                  />
+                </div>
+              ) : null
+            )
           )}
 
           {terminalMounted && (

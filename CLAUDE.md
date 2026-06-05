@@ -406,6 +406,16 @@ folder per window** — opening a *different* folder spawns a new OS window (VS 
 New Window"); re-opening the same folder focuses the window that already owns it. Opening a folder
 never disturbs existing tabs.
 
+**No auto-opened untitled doc**: NoteHub never creates an `untitled-todo.md` tab on its own. A main
+window with no restored session, a freshly-spawned workspace window, and a window whose last tab was
+just closed all settle into an **empty/welcome state** — `App` keeps the MenuBar + sidebar mounted
+(only the document area shows the welcome message), so files are created/opened from the sidebar tree
+(right-click → New File) or the **File** menu. Closing the last tab is allowed (`handleCloseTab`
+no longer forces one tab to remain; `activeTabId` becomes `""`). New `.md` files are created empty
+(plain Milkdown docs), so the old `getDefaultProjectContent()` task-board template is now only reached
+when restoring an in-memory buffer for a path that is momentarily `null` (e.g. a raw-file tab), never
+on disk.
+
 Entry points: the **File → Open Folder…** menu item (or the sidebar's empty-state **Open Folder**
 button) — both call `openFolderDialog` via `useWorkspace.openFolder`; **dragging a folder
 into the window** (`useTabManagement` drag-drop splits dirs from files via the `is_directory`

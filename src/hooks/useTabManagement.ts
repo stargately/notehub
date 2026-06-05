@@ -61,8 +61,10 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
   const onOpenFolderRef = useRef(onOpenFolder);
   onOpenFolderRef.current = onOpenFolder;
 
-  // Resolve initial files on mount. A spawned workspace window starts with a single fresh
-  // tab (its folder comes from useWorkspace); only the main window restores the session.
+  // Resolve initial files on mount. A spawned workspace window opens its folder (from
+  // useWorkspace) with no tabs; only the main window restores the session. We never auto-open
+  // an untitled doc — the empty state shows the welcome/file-tree, and new files are created
+  // from the sidebar or File menu.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -70,9 +72,8 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
       if (cancelled) return;
       setIsMainWindow(main);
       if (!main) {
-        const fresh = [makeTab(null)];
-        setTabs(fresh);
-        setActiveTabId(fresh[0].id);
+        setTabs([]);
+        setActiveTabId("");
         setInitialized(true);
         return;
       }
@@ -81,11 +82,15 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
       // Canonicalize so restored tabs match the watcher's realpath events (live reload).
       const canonicalPaths = await Promise.all(paths.map((p) => canonicalizePath(p)));
       if (cancelled) return;
-      const newTabs =
-        canonicalPaths.length > 0 ? canonicalPaths.map(makeTab) : [makeTab(null)];
-      const idx = Math.min(Math.max(activeIndex, 0), newTabs.length - 1);
-      setTabs(newTabs);
-      setActiveTabId(newTabs[idx].id);
+      const newTabs = canonicalPaths.map(makeTab);
+      if (newTabs.length > 0) {
+        const idx = Math.min(Math.max(activeIndex, 0), newTabs.length - 1);
+        setTabs(newTabs);
+        setActiveTabId(newTabs[idx].id);
+      } else {
+        setTabs([]);
+        setActiveTabId("");
+      }
       setInitialized(true);
     })();
     return () => {
@@ -163,10 +168,10 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
         const next = prev.filter((t) => t.id !== id);
-        if (next.length === 0) return prev; // keep at least one tab
+        // Closing the last tab is allowed — it falls back to the welcome/empty state (no auto
+        // untitled doc); the sidebar + File menu remain available to open or create files.
         if (id === activeTabId) {
-          const newIdx = Math.min(idx, next.length - 1);
-          setActiveTabId(next[newIdx].id);
+          setActiveTabId(next.length === 0 ? "" : next[Math.min(idx, next.length - 1)].id);
         }
         return next;
       });
