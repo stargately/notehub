@@ -194,10 +194,12 @@ document moves into a new window (just like Zed or a browser). Drop it back insi
 
 ### The File menu
 
-A thin **File ▾** menu bar sits at the top of the window (Zed-style). It collects the common file
-actions in one place: **New File**, **New Folder**, **Open File…** (`Cmd+O`), **Open Folder…**,
-**Quick Open** (`Cmd+P`), **Save** (`Cmd+S`), and **Refresh File Tree**. New File / New Folder create
-at the workspace root (greyed out until a folder is open).
+NoteHub uses the **native OS menu bar** (the macOS top-of-screen menu, Zed-style). Its **File** menu
+collects the common file actions: **New File**, **New Folder**, **Open File…** (`⌘O`), **Open
+Folder…**, **Quick Open…** (`⌘P`), **Save** (`⌘S`), and **Refresh File Tree** — plus the standard
+**Edit** menu (Copy/Paste/Undo/Redo) and **Close Window** (`⌘W`). Items grey out when they don't
+apply (Save with no open document; New File / New Folder / Refresh until a folder is open), tracking
+whichever window is focused.
 
 ### Managing files in the tree
 

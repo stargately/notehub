@@ -24,9 +24,8 @@ notehub/
 │   │   ├── MarkdownEditor.tsx  # Raw markdown/code editor (Monaco; `language` prop)
 │   │   ├── Sidebar.tsx         # Collapsible, resizable workspace file-tree panel (header = folder name)
 │   │   ├── FileTree.tsx        # Lazy recursive tree + right-click ops & inline create/rename
-│   │   ├── MenuBar.tsx         # Top File ▾ menu bar (New/Open/Quick Open/Save/Refresh via ContextMenu)
 │   │   ├── QuickOpen.tsx       # Cmd+P fuzzy file finder overlay (gitignore-aware index)
-│   │   ├── ContextMenu.tsx     # Shared floating menu (FileTree right-click, TabBar, top File menu)
+│   │   ├── ContextMenu.tsx     # Shared floating menu (FileTree right-click, TabBar)
 │   │   ├── ConfirmModal.tsx    # Generic confirm dialog (e.g. move-to-Trash)
 │   │   ├── KeybindingsHelp.tsx # Keyboard-shortcuts reference + user keymap JSON editor
 │   │   ├── RawFileEditor.tsx   # Non-md files: raw Monaco / inline image / binary placeholder
@@ -37,6 +36,7 @@ notehub/
 │   │   ├── useFileIndex.ts     # Lazy-cached recursive file index for Cmd+P (invalidate on change)
 │   │   ├── useWorkspace.ts     # Workspace folder root + sidebar open/width state
 │   │   ├── useRawFile.ts       # Load/autosave a non-md text file (own per-file FileSync)
+│   │   ├── useNativeMenu.ts    # Bridge native File menu: menu:* events → handlers + enabled-state sync
 │   │   └── useFileWatcher.ts   # External change detection
 │   ├── lib/
 │   │   ├── types.ts            # TypeScript interfaces
@@ -58,6 +58,7 @@ notehub/
 │       ├── main.rs             # Entry point
 │       ├── lib.rs              # App init
 │       ├── commands.rs         # IPC commands (read/write file, terminal)
+│       ├── menu.rs             # Native macOS app menu (File submenu) + click→focused-window routing
 │       ├── terminal.rs         # PTY management (portable-pty)
 │       └── watcher.rs          # File system watcher (notify crate)
 ├── docs/plan.md                # Technical spec
@@ -111,7 +112,8 @@ npm run fmt:rust:check # cargo fmt -- --check
   `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`, `tear-off`
   (`isReleaseOutsideWindow`), `recent-files`, `useFileSync`, `useProjectFile`, `useViewMode`,
   `useRawFile`, `useTabManagement` (startup/close + tab tear-off: spawned-window file restore and
-  `detachTab` move-or-keep-on-failure) — these lock in the
+  `detachTab` move-or-keep-on-failure), `useNativeMenu` (native File-menu `menu:*` events → handlers,
+  latest-handler-via-ref, and focus-synced enabled-state push) — these lock in the
   loaded-path guard that stops one tab's content from being written onto another file and the editor
   never being seeded from a stale `projectData`; `components/__tests__/DocumentView` renders two real
   per-tab `DocumentView`s with the heavy editors stubbed and asserts edits route to each tab's own
@@ -137,6 +139,8 @@ npm run fmt:rust:check # cargo fmt -- --check
     `create_dir` / `rename_path` commands round-tripped through a temp dir (`#[tokio::test]`)
   - `terminal.rs` → the `write` / `resize` / `kill` error paths against an empty `TerminalState`
     (unknown `session_id` → error; `kill` is a no-op `Ok`) — exercised without spawning a real PTY
+  - `menu.rs` → `menu_event_name` (native File-menu item id → `menu:*` event name; unknown/predefined
+    ids → `None`) — the pure core of the native-menu click routing
   When adding backend logic, prefer extracting the testable core into a pure function and add a
   test next to it — keep the IO/threading shell thin.
 - **Coverage** — `npm run test:rust:coverage` (`cargo llvm-cov --summary-only`) reports line/region
@@ -313,7 +317,9 @@ Shortcuts are **data-driven**, not hard-coded. A keymap (`src/lib/keymap/`) maps
 namespaced **actions** within **contexts**; the focused view registers a handler for each action.
 This replaced the old ad-hoc `keydown` listeners (`useKeyboardShortcuts`, `Toolbar`, `QaLayout`,
 `TerminalPanel`). See *Keymap system* below for the architecture. Users can remap anything via
-**File → Keyboard Shortcuts…** (`KeybindingsHelp.tsx`). The default bindings:
+**File → Keyboard Shortcuts…** (`KeybindingsHelp.tsx`). The default bindings (note: `Cmd+O`/`Cmd+P`/
+`Cmd+S` are also native File-menu accelerators — the OS dispatches those three to the menu, which
+routes to the same handlers, so the keymap entries for them are effectively superseded):
 
 - `Cmd+R` — Reload file
 - `Cmd+N` — New task (Grid context)
@@ -412,9 +418,9 @@ never disturbs existing tabs.
 
 **No auto-opened untitled doc**: NoteHub never creates an `untitled-todo.md` tab on its own. A main
 window with no restored session, a freshly-spawned workspace window, and a window whose last tab was
-just closed all settle into an **empty/welcome state** — `App` keeps the MenuBar + sidebar mounted
-(only the document area shows the welcome message), so files are created/opened from the sidebar tree
-(right-click → New File) or the **File** menu. Closing the last tab is allowed (`handleCloseTab`
+just closed all settle into an **empty/welcome state** — `App` keeps the sidebar mounted (only the
+document area shows the welcome message), so files are created/opened from the sidebar tree
+(right-click → New File) or the native **File** menu. Closing the last tab is allowed (`handleCloseTab`
 no longer forces one tab to remain; `activeTabId` becomes `""`). New `.md` files are created empty
 (plain Milkdown docs), so the old `getDefaultProjectContent()` task-board template is now only reached
 when restoring an in-memory buffer for a path that is momentarily `null` (e.g. a raw-file tab), never
@@ -490,18 +496,25 @@ tree file live-reloads on external edits.
     new `.md` is created **empty** so it opens as a plain Milkdown doc (never `getDefaultProjectContent`,
     which seeds `layout: todo`). Delete goes through a `ConfirmModal` → OS Trash. Root-level creates
     are exposed via a `useImperativeHandle` on `FileTree` (`FileTreeHandle.newFileAtRoot/newFolderAtRoot`);
-    the ref is **owned by `App`** and passed down to `Sidebar` (`treeRef` prop) so the top File menu
+    the ref is **owned by `App`** and passed down to `Sidebar` (`treeRef` prop) so the native File menu
     can drive it. Tab sync: `FileTree` calls `onRenamed`/`onDeleted` →
     `useTabManagement.renameTabPath` (repoints open tabs, incl. descendants of a renamed folder) /
     `closeTabByPath` (closes tabs for a deleted path/subtree). `useViewMode.cleanupTab` cancels the
     pending editor autosave so a delete can't be undone by a debounced write recreating the file.
-  - **Top File menu** (`MenuBar.tsx`): a thin in-app menu bar at the top of the window (rendered in
-    `App` above the sidebar+content row, `isTauri`-gated) with a single **File ▾** dropdown built on
-    the shared `ContextMenu` — New File, New Folder, Open File… (`⌘O`), Open Folder…, Quick Open
-    (`⌘P`), Save (`⌘S`), Refresh File Tree. It replaced the old sidebar-header icon buttons (the
-    sidebar header now shows just the folder name). New File/Folder are disabled without a workspace;
-    because they render an inline input in the tree, `App` first calls `openSidebar()` (added to
-    `useWorkspace`) and flushes the create via a `pendingNew` effect once `FileTree`'s ref is live.
+  - **Native File menu** (`src-tauri/src/menu.rs` + `src/hooks/useNativeMenu.ts`): the macOS top menu
+    bar's **File** submenu (New File, New Folder, Open File… `⌘O`, Open Folder…, Quick Open… `⌘P`,
+    Save `⌘S`, Refresh File Tree, Close Window `⌘W`, Keyboard Shortcuts…) — there is no in-window menu
+    bar. `menu::build_app_menu` starts from `Menu::default` (keeping the native App/**Edit**/Window
+    menus) and swaps the stock File submenu (macOS index 1) for ours. `on_menu_event` →
+    `menu::handle_menu_event` emits `menu:<action>` to the **focused** window only; `useNativeMenu`
+    (mounted in `App`, runs in every window) listens and calls the same handlers the old MenuBar used
+    (`triggerNew`, `handleAddTab`, `openFolder`, `setQuickOpenOpen`, `runActive(save)`, `refreshAllDirs`,
+    `setKeymapHelpOpen`). `⌘O`/`⌘P`/`⌘S` are real menu accelerators (OS-handled; they supersede the
+    keymap's `mod-o/p/s` but route to the same handlers). Enabled state is focus-synced: `useNativeMenu`
+    pushes `(hasWorkspace, canSave)` via the `update_file_menu` command on focus + state change, toggling
+    the `FileMenuItems` handles held in `AppState.file_menu` (Save off with no doc; New File/Folder/Refresh
+    off without a workspace). `triggerNew` bails when there's no workspace (defense now that the disable
+    is native). New `.md` files are still created empty (plain Milkdown doc).
   - **Quick open** (`Cmd+P`, `QuickOpen.tsx`): a fuzzy file finder over the workspace. `useFileIndex`
     lazily fetches `list_workspace_files` on open, caches it in a ref, and `invalidate()`s on any
     `file-changed` (via `tree-refresh.subscribeAll`) or when the root changes. `fuzzy.ts` (fzy-style,

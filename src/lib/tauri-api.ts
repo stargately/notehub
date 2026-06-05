@@ -234,6 +234,13 @@ export async function getWindowRect(): Promise<{ x: number; y: number; width: nu
   return invoke<{ x: number; y: number; width: number; height: number }>("get_window_rect");
 }
 
+/** Sync the native File menu's enabled state to the focused window's workspace/tab state. */
+export async function updateFileMenu(hasWorkspace: boolean, canSave: boolean): Promise<void> {
+  if (!isTauri) return;
+  const invoke = await getInvoke();
+  await invoke<void>("update_file_menu", { hasWorkspace, canSave });
+}
+
 /** Record this window's adopted workspace root (or clear it with null) in the backend map. */
 export async function setWorkspaceRoot(path: string | null): Promise<void> {
   if (!isTauri) return;

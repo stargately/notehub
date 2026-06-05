@@ -395,6 +395,19 @@ pub fn get_window_files(
     Ok(drain_window_files(&mut map, &label))
 }
 
+/// Toggle the native File menu's focus-dependent items (Save / New File / New Folder / Refresh)
+/// to match the calling window's state. The frontend calls this on focus + workspace/tab changes so
+/// the shared app menu always reflects the focused window.
+#[tauri::command]
+pub fn update_file_menu(
+    state: State<AppState>,
+    has_workspace: bool,
+    can_save: bool,
+) -> Result<(), String> {
+    crate::menu::set_file_menu_enabled(&state, has_workspace, can_save);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn note_recent_document(app: AppHandle, path: String) {
     crate::recent_docs::note(&app, path);

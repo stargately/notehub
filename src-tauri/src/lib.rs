@@ -1,4 +1,5 @@
 mod commands;
+mod menu;
 mod recent_docs;
 pub mod terminal;
 mod watcher;
@@ -29,6 +30,9 @@ pub struct AppState {
     /// Files a torn-off window should open on first mount, keyed by its window label
     /// ("workspace-N"). Drained by `get_window_files` once consumed. See `commands::detach_tab`.
     pub window_files: Mutex<HashMap<String, Vec<String>>>,
+    /// Handles to the native File-menu items whose enabled state tracks the focused window
+    /// (Save / New File / New Folder / Refresh). Populated in `setup`. See `commands::update_file_menu`.
+    pub file_menu: Mutex<Option<menu::FileMenuItems>>,
     /// Canonical directories that already have a watcher thread, so `ensure_watching` never
     /// spawns a duplicate (would cause double `file-changed` events / reloads).
     pub watched_dirs: Mutex<std::collections::HashSet<String>>,
@@ -176,6 +180,7 @@ pub fn run() {
             window_counter: AtomicUsize::new(1),
             workspace_windows: Mutex::new(HashMap::new()),
             window_files: Mutex::new(HashMap::new()),
+            file_menu: Mutex::new(None),
             watched_dirs: Mutex::new(std::collections::HashSet::new()),
         })
         .manage(terminal::TerminalState::new())
@@ -200,6 +205,7 @@ pub fn run() {
             commands::detach_tab,
             commands::get_window_files,
             commands::get_window_rect,
+            commands::update_file_menu,
             commands::print_html,
             commands::start_watching,
             commands::stop_watching,
@@ -208,7 +214,18 @@ pub fn run() {
             commands::resize_terminal,
             commands::kill_terminal,
         ])
+        .on_menu_event(|app, event| menu::handle_menu_event(app, event.id().as_ref()))
         .setup(move |app| {
+            // Native app menu (macOS top bar): swap the stock File submenu for ours, keep the
+            // standard App/Edit/Window menus. File clicks route to the focused window as events.
+            let (app_menu, file_items) = menu::build_app_menu(app.handle())?;
+            app.set_menu(app_menu)?;
+            app.state::<AppState>()
+                .file_menu
+                .lock()
+                .map_err(|e| e.to_string())?
+                .replace(file_items);
+
             let state = app.state::<AppState>();
             // If launched without CLI file args, fall back to the persisted session.
             if !initial_from_cli {

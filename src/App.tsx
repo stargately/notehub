@@ -13,7 +13,7 @@ import { refreshAllDirs } from "./lib/tree-refresh";
 import { TabBar } from "./components/TabBar";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { Sidebar } from "./components/Sidebar";
-import { MenuBar } from "./components/MenuBar";
+import { useNativeMenu } from "./hooks/useNativeMenu";
 import type { FileTreeHandle } from "./components/FileTree";
 import { QuickOpen } from "./components/QuickOpen";
 import { KeybindingsHelp } from "./components/KeybindingsHelp";
@@ -43,10 +43,11 @@ function App() {
   const [pendingNew, setPendingNew] = useState<"file" | "folder" | null>(null);
   const triggerNew = useCallback(
     (kind: "file" | "folder") => {
+      if (!workspaceRoot) return; // no workspace → nothing to create at root (don't leave pendingNew set)
       openSidebar();
       setPendingNew(kind);
     },
-    [openSidebar],
+    [openSidebar, workspaceRoot],
   );
   useEffect(() => {
     if (!pendingNew || !sidebarOpen) return;
@@ -128,6 +129,22 @@ function App() {
   useKeymapAction(ACTIONS.undo, () => runActive((c) => c.undo()));
   useKeymapAction(ACTIONS.redo, () => runActive((c) => c.redo()));
 
+  // Native OS File menu (macOS top bar). Replaces the old in-window MenuBar; clicks arrive as
+  // `menu:*` events routed to the focused window, and we keep the menu's enabled state in sync.
+  useNativeMenu(
+    {
+      onNewFile: () => triggerNew("file"),
+      onNewFolder: () => triggerNew("folder"),
+      onOpenFile: handleAddTab,
+      onOpenFolder: openFolder,
+      onQuickOpen: () => setQuickOpenOpen(true),
+      onSave: () => runActive((c) => c.save()),
+      onRefresh: refreshAllDirs,
+      onOpenKeymap: () => setKeymapHelpOpen(true),
+    },
+    { hasWorkspace: !!workspaceRoot, canSave: tabs.length > 0 },
+  );
+
   if (!initialized) {
     return (
       <div className="h-screen flex items-center justify-center" style={{ background: "var(--nh-bg)" }}>
@@ -156,20 +173,6 @@ function App() {
         onOpenFolder={openFolder}
       />
       <KeybindingsHelp open={keymapHelpOpen} onClose={() => setKeymapHelpOpen(false)} />
-      {isTauri && (
-        <MenuBar
-          workspaceRoot={workspaceRoot}
-          canSave={tabs.length > 0}
-          onNewFile={() => triggerNew("file")}
-          onNewFolder={() => triggerNew("folder")}
-          onOpenFile={handleAddTab}
-          onOpenFolder={openFolder}
-          onQuickOpen={() => setQuickOpenOpen(true)}
-          onSave={() => runActive((c) => c.save())}
-          onRefresh={refreshAllDirs}
-          onOpenKeymap={() => setKeymapHelpOpen(true)}
-        />
-      )}
       <div className="flex-1 flex flex-row overflow-hidden">
         {isTauri && (
           <Sidebar
