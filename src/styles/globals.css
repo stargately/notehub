@@ -368,6 +368,14 @@ button, a, input, select, textarea {
   padding: 8px 16px;
 }
 
+/* Full-width band below a Q&A row, introduced by a `**===**` answer terminator. */
+.nh-qa-after {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 8px 16px;
+  border-top: 1px solid var(--nh-border);
+}
+
 .nh-qa-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);

@@ -3,17 +3,23 @@
 // A QA file is a plain markdown file whose body is split by marker lines:
 //   - everything before the first `**>>>**`  -> full-width header
 //   - text between `**>>>**` and `**<<<**`    -> left column (question)
-//   - text after `**<<<**` (until the next `**>>>**` or EOF) -> right column (answer)
+//   - text after `**<<<**` (until the next `**>>>**`, `**===**`, or EOF) -> right column (answer)
+//   - text after an optional `**===**` (until the next `**>>>**` or EOF) -> full-width band
+//     below the row (the block's `after` field) — lets an answer end early so trailing prose
+//     isn't swallowed into the answer column.
 //
 // These functions operate purely on the raw file string. The frontmatter block is
 // preserved verbatim so `layout: qa` is never reformatted or polluted on save.
 
 const OPEN_MARKER = "**>>>**";
 const CLOSE_MARKER = "**<<<**";
+const TERM_MARKER = "**===**";
 
 export interface QaBlock {
   left: string;
   right: string;
+  /** Optional full-width band after the answer, introduced by a `**===**` terminator. */
+  after?: string;
 }
 
 export interface QaDocument {
@@ -50,18 +56,23 @@ export function parseQaBlocks(body: string): QaDocument {
   const headerLines: string[] = [];
   const blocks: QaBlock[] = [];
 
-  // "header" until the first open marker, then alternate left/right within blocks.
-  let target: "header" | "left" | "right" = "header";
+  // "header" until the first open marker, then left -> right -> (optional) after within blocks.
+  let target: "header" | "left" | "right" | "after" = "header";
   let leftLines: string[] = [];
   let rightLines: string[] = [];
+  let afterLines: string[] = [];
 
   const flushBlock = () => {
-    blocks.push({
+    const after = trimBlankLines(afterLines.join("\n"));
+    const block: QaBlock = {
       left: trimBlankLines(leftLines.join("\n")),
       right: trimBlankLines(rightLines.join("\n")),
-    });
+    };
+    if (after) block.after = after;
+    blocks.push(block);
     leftLines = [];
     rightLines = [];
+    afterLines = [];
   };
 
   for (const line of lines) {
@@ -74,10 +85,15 @@ export function parseQaBlocks(body: string): QaDocument {
       target = "right";
       continue;
     }
+    if (isMarker(line, TERM_MARKER) && target === "right") {
+      target = "after";
+      continue;
+    }
 
     if (target === "header") headerLines.push(line);
     else if (target === "left") leftLines.push(line);
-    else rightLines.push(line);
+    else if (target === "right") rightLines.push(line);
+    else afterLines.push(line);
   }
 
   if (target !== "header") flushBlock();
@@ -96,7 +112,9 @@ export function assembleQa(frontmatter: string, doc: QaDocument): string {
   const parts: string[] = [];
   if (doc.header.trim()) parts.push(doc.header.trim());
   for (const block of doc.blocks) {
-    parts.push([OPEN_MARKER, "", block.left.trim(), "", CLOSE_MARKER, "", block.right.trim()].join("\n"));
+    const lines = [OPEN_MARKER, "", block.left.trim(), "", CLOSE_MARKER, "", block.right.trim()];
+    if (block.after?.trim()) lines.push("", TERM_MARKER, "", block.after.trim());
+    parts.push(lines.join("\n"));
   }
   const bodyText = parts.join("\n\n");
 

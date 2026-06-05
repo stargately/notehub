@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useKeymapAction } from "../lib/keymap/provider";
 import { ACTIONS } from "../lib/keymap/actions";
 import { MarkdownWysiwyg } from "./MarkdownWysiwyg";
@@ -144,14 +144,15 @@ export function QaLayout({
       if (header === state.doc.header) return null;
       return { ...state, doc: { ...state.doc, header } };
     }
-    const m = field.match(/^block-(\d+)-(left|right)$/);
+    const m = field.match(/^block-(\d+)-(left|right|after)$/);
     if (!m) return null;
     const i = Number(m[1]);
-    const side = m[2] as "left" | "right";
+    const side = m[2] as "left" | "right" | "after";
     const block = state.doc.blocks[i];
     if (!block) return null;
-    const replaced = fn(block[side]);
-    if (replaced === block[side]) return null;
+    const current = block[side] ?? "";
+    const replaced = fn(current);
+    if (replaced === current) return null;
     const blocks = state.doc.blocks.map((b, idx) => (idx === i ? { ...b, [side]: replaced } : b));
     return { ...state, doc: { ...state.doc, blocks } };
   };
@@ -177,8 +178,10 @@ export function QaLayout({
     const cur = parsedRef.current;
     const header = replaceAllOccurrences(cur.doc.header, query, replaceText, caseSensitive);
     const blocks = cur.doc.blocks.map((b) => ({
+      ...b,
       left: replaceAllOccurrences(b.left, query, replaceText, caseSensitive),
       right: replaceAllOccurrences(b.right, query, replaceText, caseSensitive),
+      ...(b.after !== undefined && { after: replaceAllOccurrences(b.after, query, replaceText, caseSensitive) }),
     }));
     commitRemount({ ...cur, doc: { header, blocks } });
   };
@@ -207,7 +210,7 @@ export function QaLayout({
     commit({ ...cur, doc: { ...cur.doc, header } });
   };
 
-  const updateBlock = (index: number, side: "left" | "right", value: string) => {
+  const updateBlock = (index: number, side: "left" | "right" | "after", value: string) => {
     const cur = parsedRef.current;
     const blocks = cur.doc.blocks.map((b, i) => (i === index ? { ...b, [side]: value } : b));
     commit({ ...cur, doc: { ...cur.doc, blocks } });
@@ -280,26 +283,39 @@ export function QaLayout({
         )}
 
         {doc.blocks.map((block, i) => (
-          <div key={`b-${i}-${themeKey}`} className="nh-qa-row">
-            <div className="nh-qa-col nh-qa-col-left" data-qa-field={`block-${i}-left`}>
-              <MarkdownWysiwyg
-                key={`l-${i}-${themeKey}`}
-                value={block.left}
-                onChange={(v) => updateBlock(i, "left", v)}
-                darkMode={darkMode}
-                placeholder="Question…"
-              />
+          <Fragment key={`b-${i}-${themeKey}`}>
+            <div className="nh-qa-row">
+              <div className="nh-qa-col nh-qa-col-left" data-qa-field={`block-${i}-left`}>
+                <MarkdownWysiwyg
+                  key={`l-${i}-${themeKey}`}
+                  value={block.left}
+                  onChange={(v) => updateBlock(i, "left", v)}
+                  darkMode={darkMode}
+                  placeholder="Question…"
+                />
+              </div>
+              <div className="nh-qa-col nh-qa-col-right" data-qa-field={`block-${i}-right`}>
+                <MarkdownWysiwyg
+                  key={`r-${i}-${themeKey}`}
+                  value={block.right}
+                  onChange={(v) => updateBlock(i, "right", v)}
+                  darkMode={darkMode}
+                  placeholder="Answer…"
+                />
+              </div>
             </div>
-            <div className="nh-qa-col nh-qa-col-right" data-qa-field={`block-${i}-right`}>
-              <MarkdownWysiwyg
-                key={`r-${i}-${themeKey}`}
-                value={block.right}
-                onChange={(v) => updateBlock(i, "right", v)}
-                darkMode={darkMode}
-                placeholder="Answer…"
-              />
-            </div>
-          </div>
+            {block.after !== undefined && (
+              <div className="nh-qa-after" data-qa-field={`block-${i}-after`}>
+                <MarkdownWysiwyg
+                  key={`af-${i}-${themeKey}`}
+                  value={block.after}
+                  onChange={(v) => updateBlock(i, "after", v)}
+                  darkMode={darkMode}
+                  placeholder="Notes…"
+                />
+              </div>
+            )}
+          </Fragment>
         ))}
       </div>
     </div>

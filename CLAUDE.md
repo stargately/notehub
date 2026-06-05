@@ -245,6 +245,8 @@ Anything before the first **>>>** is a full-width header.
 The question (left column)
 **<<<**
 The answer (right column)
+**===**
+An optional full-width note below the row (spans both columns).
 
 **>>>**
 A second question…
@@ -254,7 +256,13 @@ A second question…
 
 - Content before the first `**>>>**` → full-width header editor.
 - Text between `**>>>**` and `**<<<**` → left column.
-- Text after `**<<<**` (until the next `**>>>**` or EOF) → right column.
+- Text after `**<<<**` (until the next `**>>>**`, `**===**`, or EOF) → right column.
+- An optional `**===**` ends the answer early: text after it (until the next `**>>>**` or EOF) →
+  the block's `after` field, rendered as a **full-width band below the row** (`QaBlock.after?`,
+  `data-qa-field="block-<i>-after"` → searchable via `Cmd+F`, printed full-width via `print.ts`'s
+  `.p-after`). `**===**` only acts as a terminator inside an answer (mirrors how `**<<<**` only acts
+  inside a question); a stray `**===**` elsewhere stays literal text. A block without it serializes
+  to exactly `{ left, right }` (no `after` key → no round-trip change).
 - A file with no markers renders as one full-width editor.
 
 ### Plain markdown files (no `layout`)
@@ -287,7 +295,8 @@ by `QaLayout`. Because the view is many independent mount-once Milkdown editors,
 in two representations: **find/highlight operates on the rendered DOM** via the CSS Custom
 Highlight API (`CSS.highlights` + `Range` — zero DOM mutation, safe with ProseMirror), while
 **replace operates on the markdown source strings** in `QaLayout`'s parsed state. Each editor
-region carries a `data-qa-field` attribute (`header` | `block-<i>-left` | `block-<i>-right`) so
+region carries a `data-qa-field` attribute (`header` | `block-<i>-left` | `block-<i>-right` |
+`block-<i>-after`) so
 a DOM match maps back to its source field; replace edits that field and bumps `mountKey` to
 remount the affected editor (commit alone wouldn't refresh the mount-once Crepe DOM). For plain
 prose the two representations align 1:1; a query overlapping markdown syntax (e.g. inside

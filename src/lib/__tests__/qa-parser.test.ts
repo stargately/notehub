@@ -47,6 +47,39 @@ describe("parseQaBlocks", () => {
     const doc = parseQaBlocks("**>>>**\nonly a question");
     expect(doc.blocks).toEqual([{ left: "only a question", right: "" }]);
   });
+
+  it("ends an answer at `**===**` and captures trailing text as `after`", () => {
+    const body = ["**>>>**", "q", "**<<<**", "a", "**===**", "a full-width note"].join("\n");
+    const doc = parseQaBlocks(body);
+    expect(doc.blocks).toEqual([{ left: "q", right: "a", after: "a full-width note" }]);
+  });
+
+  it("keeps `after` band attached when a following block starts", () => {
+    const body = [
+      "**>>>**", "q1", "**<<<**", "a1", "**===**", "note 1",
+      "**>>>**", "q2", "**<<<**", "a2",
+    ].join("\n");
+    const doc = parseQaBlocks(body);
+    expect(doc.blocks).toEqual([
+      { left: "q1", right: "a1", after: "note 1" },
+      { left: "q2", right: "a2" },
+    ]);
+  });
+
+  it("a normal block has no `after` key (optional field, no regression)", () => {
+    const doc = parseQaBlocks(["**>>>**", "q", "**<<<**", "a"].join("\n"));
+    expect(doc.blocks).toEqual([{ left: "q", right: "a" }]);
+    expect("after" in doc.blocks[0]).toBe(false);
+  });
+
+  it("treats `**===**` as literal text outside an answer (header/left region)", () => {
+    const header = parseQaBlocks("intro\n**===**\nmore");
+    expect(header.header).toBe("intro\n**===**\nmore");
+    expect(header.blocks).toHaveLength(0);
+
+    const left = parseQaBlocks(["**>>>**", "q", "**===**", "still q"].join("\n"));
+    expect(left.blocks).toEqual([{ left: "q\n**===**\nstill q", right: "" }]);
+  });
 });
 
 describe("assembleQa round-trip", () => {
@@ -65,6 +98,26 @@ describe("assembleQa round-trip", () => {
     const reparsed = splitFrontmatter(rebuilt);
     expect(reparsed.frontmatter).toContain("layout: qa");
     expect(parseQaBlocks(reparsed.body)).toEqual(doc);
+  });
+
+  it("round-trips a block with an `after` band", () => {
+    const raw = [
+      "---", "layout: qa", "---", "",
+      "**>>>**", "", "Question?", "", "**<<<**", "", "Answer.", "", "**===**", "", "Full-width note.",
+    ].join("\n");
+
+    const { frontmatter, body } = splitFrontmatter(raw);
+    const doc = parseQaBlocks(body);
+    expect(doc.blocks).toEqual([{ left: "Question?", right: "Answer.", after: "Full-width note." }]);
+
+    const rebuilt = assembleQa(frontmatter, doc);
+    expect(rebuilt).toContain("**===**");
+    expect(parseQaBlocks(splitFrontmatter(rebuilt).body)).toEqual(doc);
+  });
+
+  it("emits no `**===**` for a block without an `after` band", () => {
+    const out = assembleQa("", { header: "", blocks: [{ left: "q", right: "a" }] });
+    expect(out).not.toContain("**===**");
   });
 
   it("preserves frontmatter verbatim (no task-format pollution)", () => {

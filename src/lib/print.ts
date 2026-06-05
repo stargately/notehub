@@ -52,6 +52,7 @@ const PRINT_CSS = `
   }
   .p-col { padding: 6px 8px; min-width: 0; }
   .p-left { background: #f2f2f2; border-right: 1px solid #999; }
+  .p-after { padding: 6px 8px; border-bottom: 1px solid #999; }
   h1 { font-size: 13px; }
   h2 { font-size: 11px; }
   h3 { font-size: 9.5px; }
@@ -119,6 +120,7 @@ export async function printQaDocument(content: string, title: string): Promise<v
       `<div class="p-col p-left">${await segmentToHtml(b.left)}</div>` +
       `<div class="p-col p-right">${await segmentToHtml(b.right)}</div>` +
       `</section>`;
+    if (b.after?.trim()) inner += `<section class="p-after">${await segmentToHtml(b.after)}</section>`;
   }
 
   const doc = buildHtml(title, inner);

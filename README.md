@@ -108,6 +108,8 @@ Intro text before the first marker spans the full width.
 What's the question? (shows on the left)
 **<<<**
 The answer, notes, tables, and ```mermaid diagrams — shows on the right.
+**===**
+Optional full-width note after the answer (spans both columns).
 ```
 
 ` ```mermaid ` code blocks render as live diagrams in the formatted view. **Click a
@@ -117,6 +119,8 @@ edit the raw fence via the raw editor. Tables render inline too.
 - Everything before the first `**>>>**` becomes a full-width header.
 - Text between `**>>>**` and `**<<<**` is the **left** column.
 - Text after `**<<<**` (until the next `**>>>**`) is the **right** column.
+- Optionally end an answer early with `**===**`: text after it (until the next `**>>>**` or end
+  of file) becomes a full-width band below the row — handy for a note or divider between topics.
 - Stack multiple `**>>>**`/`**<<<**` blocks for multiple Q&A rows.
 - A file with no markers is just one full-width editor.
 
