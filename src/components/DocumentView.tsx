@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, type MutableRefObject } from "react";
+import { useState, useRef, useCallback, useEffect, memo, type MutableRefObject } from "react";
 import { useProjectFile } from "../hooks/useProjectFile";
 import { useViewMode } from "../hooks/useViewMode";
 import { useTaskFilters } from "../hooks/useTaskFilters";
@@ -9,7 +9,7 @@ import { useKeymapContext } from "../lib/keymap/provider";
 import { CONTEXTS } from "../lib/keymap/actions";
 import { serializeProjectMd } from "../lib/markdown-parser";
 import { deriveBaseName } from "../lib/print";
-import type { ProjectData, TabInfo, WeekFilter, FileKind } from "../lib/types";
+import type { ProjectData, TabInfo, WeekFilter, FileKind, Task } from "../lib/types";
 import type { UndoHistory } from "../hooks/useUndoHistory";
 import { TaskTable } from "./TaskTable";
 import { Toolbar } from "./Toolbar";
@@ -56,7 +56,7 @@ interface DocumentViewProps {
  * content onto another. All open tabs stay mounted (visibility-toggled by App); only the active
  * one registers keymap actions/contexts.
  */
-export function DocumentView({
+function DocumentViewImpl({
   tabId, filePath, kind, active, darkMode, setTabs, undoHistory, publishCommands,
 }: DocumentViewProps) {
   const isRawFile = kind === "raw" || kind === "image";
@@ -141,6 +141,9 @@ export function DocumentView({
 
   const drawerRef = useRef<HTMLDivElement>(null);
   useClickOutside(drawerRef, !!selectedTaskId, () => setSelectedTaskId(null));
+
+  // Stable so it doesn't defeat TaskTable's React.memo on non-data re-renders (drawer/notes toggles).
+  const handleTaskSelected = useCallback((task: Task) => setSelectedTaskId(task.id), []);
 
   const handleUndoExhausted = useCallback(() => {
     flushPendingSnapshot();
@@ -308,7 +311,7 @@ export function DocumentView({
                       filterText={filterText}
                       highlightTaskId={highlightTaskId}
                       onTasksChanged={handleTasksChanged}
-                      onTaskSelected={(task) => setSelectedTaskId(task.id)}
+                      onTaskSelected={handleTaskSelected}
                     />
                   </div>
 
@@ -339,3 +342,11 @@ export function DocumentView({
     </>
   );
 }
+
+/**
+ * Memoized so unrelated `App` re-renders (sidebar-resize drag, terminal/quick-open toggles, theme,
+ * tab switches of *other* tabs) don't re-render this tab's whole editor subtree. App passes only
+ * stable props (primitives + the stable `setTabs`/`undoHistory`/`publishCommands`), so the shallow
+ * compare holds; this tab re-renders only when its own `active`/`filePath`/`darkMode` actually change.
+ */
+export const DocumentView = memo(DocumentViewImpl);

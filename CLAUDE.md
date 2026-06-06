@@ -113,12 +113,15 @@ npm run fmt:rust:check # cargo fmt -- --check
   `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`, `tree-refresh`, `fuzzy`, `tear-off`
   (`isReleaseOutsideWindow`), `recent-files`, `useFileSync`, `useProjectFile`, `useViewMode`,
   `useRawFile`, `useTabManagement` (startup/close + tab tear-off: spawned-window file restore and
-  `detachTab` move-or-keep-on-failure), `useNativeMenu` (native File-menu `menu:*` events → handlers,
+  `detachTab` move-or-keep-on-failure), `useUndoHistory` (stable object identity for memo + per-tab
+  undo/redo), `useNativeMenu` (native File-menu `menu:*` events → handlers,
   latest-handler-via-ref, and focus-synced enabled-state push) — these lock in the
   loaded-path guard that stops one tab's content from being written onto another file and the editor
   never being seeded from a stale `projectData`; `components/__tests__/DocumentView` renders two real
   per-tab `DocumentView`s with the heavy editors stubbed and asserts edits route to each tab's own
-  file with no cross-write (plus the active tab's command bundle routing and raw-tab rendering);
+  file with no cross-write (plus the active tab's command bundle routing, raw-tab rendering, and the
+  **`React.memo` guarantee** — a parent re-render with unchanged props does not re-render a tab's
+  editor subtree);
   `components/__tests__/StatusBar` covers the bottom status bar's toggle wiring (sidebar/terminal/
   theme handlers), active-tint + `aria-pressed` state, and the `isTauri` gate hiding the panel
   toggles in browser mode; `components/__tests__/QaLayout` and `components/__tests__/Toolbar` lock in
@@ -323,6 +326,20 @@ replace still work without it.
   - **Single write chokepoint**: all watched-file writes go through `guardedWrite`, which re-reads disk first and raises a conflict instead of clobbering an external change — this is what stops the 300ms autosave from overwriting Claude when the debounce races the watcher. Every load/write updates the baseline.
   - **No cross-tab drift — per-document instances (`DocumentView`, Zed-style)**: the structural guarantee that one tab's content can never be written onto another file. Each open tab renders its own `DocumentView` instance bound to its **own fixed `filePath`** — Zed's "buffer + view" as one self-contained subtree. A `DocumentView` owns its content, file-sync baseline/dirty state, autosave, undo, and per-tab UI (filter/selection/view mode); every write target is captured from *that instance's* props and never read from a global "active file", so a stale-window save can't drift. All viewed tabs stay mounted (visibility toggled via `display`, lazy: only after first activation; `App` keeps a `everActive` set + always renders the active tab), so background tabs keep their editor state and any pending debounced write. Only the **active** tab registers keymap actions/contexts and publishes its **command bundle** (`DocCommands`: save/reload/toggleView/undo/redo) to `App`; the window-level keymap and File-menu Save delegate to `App`'s `activeCmdsRef` (race-safe register-returns-unregister, like the keymap provider). `App` is now a pure shell (tabs/sidebar/terminal/global actions) with **no per-document state**. Closing a tab unmounts its `DocumentView`, whose unmount-cleanup cancels pending autosaves (so a just-deleted file isn't recreated). Heavy editors in a hidden tab need to re-measure on reveal — Monaco uses `automaticLayout: true`.
   - **Loaded-path guard (defense-in-depth)**: `guardedWrite` only protects against *external* changes — it faithfully writes whatever content it's handed, even to the wrong file. Independently of the per-instance architecture above, the buffer hooks also gate on the path their state was loaded from: each records `loadedPath` (plus a monotonic generation token to drop out-of-order reads) and refuses to persist when `loadedPath !== <the path being written>` (`useViewMode` derives `synced = loadedPath === activeFilePath` and won't *seed* an editor from a non-matching `projectData`). This catches the same drift class (incl. the **`getDefaultProjectContent()` "Untitled Project" `layout: todo` template** that loads whenever `filePath` is momentarily `null`) even if a future caller reuses a hook across paths. The untitled case (`filePath === null`, `loadedPath === null`) still edits in memory but can't reach disk. Regression tests: `useProjectFile`/`useViewMode`/`useRawFile`/`DocumentView` `__tests__`.
+- **Render performance — memoized editor subtrees**: `App` re-renders frequently for reasons
+  unrelated to any document (sidebar-resize drag fires `setSidebarWidth` every mousemove frame,
+  terminal/quick-open/keymap-help toggles, theme, tab switches). To stop those from cascading into
+  every mounted editor, `DocumentView` is wrapped in `React.memo` — App passes it only **stable**
+  props (primitives + the stable `setTabs` useState setter, `publishCommands` (`useCallback`), and
+  `undoHistory`). `useUndoHistory` therefore returns a **`useMemo`-stabilized object** (its members
+  are already stable `useCallback`s) so its identity doesn't change each render and defeat the memo.
+  The heavy leaf editors are likewise memoized with stable props: `MarkdownEditor` (Monaco) hoists
+  its static `options` to a module const + `useCallback`s its `onChange` (so a fresh object per
+  keystroke doesn't retrigger Monaco's `updateOptions`); `TaskTable` (AG Grid) hoists `getRowId` and
+  takes a stable `onTaskSelected` from `DocumentView`. Net effect: a tab's editor re-renders only
+  when its own `active`/`filePath`/`darkMode`/content actually change, not on unrelated window
+  churn. Regression tests: `useUndoHistory` (stable identity) and `DocumentView` __tests__ (a parent
+  re-render with unchanged props does not re-render the editor).
 - **Browser fallback**: Runs without Tauri using `sample-project.md` for UI testing
 - **Dark mode**: Class-based (`dark` class), AG Grid + Tailwind themed. The **theme cycle**
   (light → dark → system) lives in the status bar, not the per-document toolbars.

@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useMemo } from "react";
 
 const MAX_STACK_SIZE = 50;
 
@@ -66,7 +66,12 @@ export function useUndoHistory() {
     delete stateRef.current[tabId];
   }, []);
 
-  return { initTab, hasTab, pushSnapshot, undo, redo, suppressNextPush, cleanupTab };
+  // Stable object identity (all members are stable useCallbacks) so consumers that pass the
+  // whole `undoHistory` as a prop — e.g. every `DocumentView` — don't break their `React.memo`.
+  return useMemo(
+    () => ({ initTab, hasTab, pushSnapshot, undo, redo, suppressNextPush, cleanupTab }),
+    [initTab, hasTab, pushSnapshot, undo, redo, suppressNextPush, cleanupTab],
+  );
 }
 
 export type UndoHistory = ReturnType<typeof useUndoHistory>;

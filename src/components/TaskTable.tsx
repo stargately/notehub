@@ -1,10 +1,11 @@
-import { useMemo, useCallback, useRef, useEffect } from "react";
+import { memo, useMemo, useCallback, useRef, useEffect } from "react";
 import { AgGridReact } from "ag-grid-react";
 import type {
   ColDef,
   CellValueChangedEvent,
   RowDragEndEvent,
   GridReadyEvent,
+  GetRowIdParams,
 } from "ag-grid-community";
 import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
 import type { Task, ProjectMeta } from "../lib/types";
@@ -21,6 +22,9 @@ import { ActionCellRenderer } from "./cell-renderers/ActionCellRenderer";
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
+// Stable identity so AG Grid doesn't see a new `getRowId` each render.
+const getRowId = (params: GetRowIdParams) => params.data.id || `_row_${params.data.title}`;
+
 interface TaskTableProps {
   tasks: Task[];
   meta: ProjectMeta;
@@ -30,7 +34,7 @@ interface TaskTableProps {
   onTaskSelected?: (task: Task) => void;
 }
 
-export function TaskTable({
+function TaskTableImpl({
   tasks,
   meta,
   filterText,
@@ -216,7 +220,7 @@ export function TaskTable({
         rowData={tasks}
         columnDefs={effectiveColumnDefs}
         defaultColDef={defaultColDef}
-        getRowId={(params) => params.data.id || `_row_${params.data.title}`}
+        getRowId={getRowId}
         onGridReady={onGridReady}
         onCellValueChanged={onCellValueChanged}
         onRowDragEnd={onRowDragEnd}
@@ -231,3 +235,10 @@ export function TaskTable({
     </div>
   );
 }
+
+/**
+ * Memoized so the grid isn't re-rendered when its `DocumentView` re-renders for non-grid reasons
+ * (drawer open/close, notes toggle). Re-renders only when `tasks`/`meta`/`filterText`/`highlightTaskId`
+ * or the (memoized) callbacks actually change.
+ */
+export const TaskTable = memo(TaskTableImpl);

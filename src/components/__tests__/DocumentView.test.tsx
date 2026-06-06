@@ -9,12 +9,16 @@ import type { DocCommands } from "../DocumentView";
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("../../hooks/useFileWatcher", () => ({ useFileWatcher: () => {} }));
 
+// Counts how often the (stubbed) editor renders — proxy for whether its DocumentView re-rendered.
+const counters = vi.hoisted(() => ({ qaRenders: 0 }));
+
 // Stub the heavy editors. QaLayout (the plain/qa view) becomes a controllable textarea keyed by
 // the document's file name; RawFileEditor a marker keyed by its path — both individually addressable.
 vi.mock("../QaLayout", () => ({
-  QaLayout: ({ content, onChange, fileName }: { content: string; onChange: (v: string) => void; fileName?: string }) => (
-    <textarea data-testid={`qa-${fileName}`} value={content} onChange={(e) => onChange(e.target.value)} />
-  ),
+  QaLayout: ({ content, onChange, fileName }: { content: string; onChange: (v: string) => void; fileName?: string }) => {
+    counters.qaRenders++;
+    return <textarea data-testid={`qa-${fileName}`} value={content} onChange={(e) => onChange(e.target.value)} />;
+  },
 }));
 vi.mock("../RawFileEditor", () => ({
   RawFileEditor: ({ filePath }: { filePath: string }) => <div data-testid={`raw-${filePath}`} />,
@@ -48,9 +52,14 @@ const TABS: TabInfo[] = [
   { id: "C", filePath: "/c.txt", label: "c.txt", kind: "raw" },
 ];
 
+// Stable reference (mirrors App's useState setter) so DocumentView's React.memo can hold.
+const noopSetTabs: React.Dispatch<React.SetStateAction<TabInfo[]>> = () => {};
+
 function Harness() {
   const undoHistory = useUndoHistory();
   const [activeId, setActiveId] = useState("A");
+  // Unrelated parent state — bumping it re-renders Harness without changing any DocumentView prop.
+  const [, force] = useState(0);
   // Mirror App: the active tab publishes its command bundle (race-safe register/unregister).
   const activeCmds = useRef<MutableRefObject<DocCommands> | null>(null);
   const publishCommands = useCallback((ref: MutableRefObject<DocCommands>) => {
@@ -61,6 +70,7 @@ function Harness() {
     <KeymapProvider>
       <button data-testid="to-A" onClick={() => setActiveId("A")}>A</button>
       <button data-testid="to-B" onClick={() => setActiveId("B")}>B</button>
+      <button data-testid="bump" onClick={() => force((n) => n + 1)}>bump</button>
       <button data-testid="global-reload" onClick={() => activeCmds.current?.current.reload()}>reload</button>
       {TABS.map((t) => (
         <div key={t.id} style={{ display: t.id === activeId ? "block" : "none" }}>
@@ -70,7 +80,7 @@ function Harness() {
             kind={t.kind}
             active={t.id === activeId}
             darkMode={false}
-            setTabs={() => {}}
+            setTabs={noopSetTabs}
             undoHistory={undoHistory}
             publishCommands={publishCommands}
           />
@@ -140,5 +150,20 @@ describe("DocumentView per-tab isolation (Zed-style buffer/view)", () => {
     render(<Harness />);
     await settle();
     expect(screen.getByTestId("raw-/c.txt")).toBeTruthy();
+  });
+
+  it("does not re-render a tab's editor when the parent re-renders with unchanged props (React.memo)", async () => {
+    render(<Harness />);
+    await settle();
+    // Baseline after mount + async load have settled.
+    const before = counters.qaRenders;
+
+    // Two unrelated parent re-renders (no DocumentView prop changes).
+    act(() => { screen.getByTestId("bump").click(); });
+    act(() => { screen.getByTestId("bump").click(); });
+    await settle();
+
+    // memo short-circuited both — the editor subtree was not reconciled.
+    expect(counters.qaRenders).toBe(before);
   });
 });

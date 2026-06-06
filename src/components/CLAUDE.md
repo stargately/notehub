@@ -21,6 +21,18 @@ editor header was removed (those no longer take `themeMode`/`onCycleTheme`).
 Tests: `__tests__/StatusBar.test.tsx` (toggle handler wiring, active tint + `aria-pressed`, and the
 `isTauri` gate that hides the panel toggles in browser mode).
 
+## Render performance — memoized editors
+
+`DocumentView`, `MarkdownEditor` (Monaco), and `TaskTable` (AG Grid) are wrapped in `React.memo` so
+unrelated `App` re-renders (sidebar-resize drag, terminal/quick-open toggles, theme) don't cascade
+into the editor subtree. This relies on **stable props**: `App` passes `DocumentView` only
+primitives + stable callbacks (the key one is `undoHistory`, which `useUndoHistory` now returns via
+`useMemo`); `MarkdownEditor` hoists its static Monaco `options` to a module const and `useCallback`s
+`onChange`; `TaskTable` hoists `getRowId` and gets a stable `onTaskSelected` from `DocumentView`. If
+you add a prop to any of these, keep it referentially stable or the memo silently stops helping.
+Tests: `hooks/__tests__/useUndoHistory` (stable identity) + the memo assertion in
+`__tests__/DocumentView`.
+
 ## Per-document header (thin Zed-style title bar)
 
 Every document view renders a thin (~30px) header titled by the **file name**

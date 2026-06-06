@@ -1,5 +1,5 @@
-import Editor, { type OnMount } from "@monaco-editor/react";
-import { useRef } from "react";
+import Editor, { type OnMount, type EditorProps } from "@monaco-editor/react";
+import { memo, useCallback, useRef } from "react";
 
 interface MarkdownEditorProps {
   content: string;
@@ -11,9 +11,25 @@ interface MarkdownEditorProps {
   onRedoExhausted?: () => string | null;
 }
 
-export function MarkdownEditor({ content, onChange, darkMode, language = "markdown", onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
+// Static — hoisted so a fresh object identity per render doesn't trigger Monaco's `updateOptions`
+// diff on every keystroke (the `content` prop changes each edit).
+const MONACO_OPTIONS: EditorProps["options"] = {
+  // Background tabs stay mounted in a display:none container, so Monaco must re-measure when its
+  // tab is revealed (otherwise it paints at 0×0).
+  automaticLayout: true,
+  wordWrap: "on",
+  minimap: { enabled: false },
+  fontSize: 14,
+  lineNumbers: "off",
+  scrollBeyondLastLine: false,
+  padding: { top: 16 },
+};
+
+function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown", onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialVersionRef = useRef<number>(0);
+
+  const handleChange = useCallback((value: string | undefined) => onChange(value ?? ""), [onChange]);
 
   const handleMount: OnMount = (editor, monaco) => {
     editor.focus();
@@ -121,20 +137,17 @@ export function MarkdownEditor({ content, onChange, darkMode, language = "markdo
         language={language}
         theme={darkMode ? "vs-dark" : "light"}
         value={content}
-        onChange={(value) => onChange(value ?? "")}
+        onChange={handleChange}
         onMount={handleMount}
-        options={{
-          // Background tabs stay mounted in a display:none container, so Monaco must
-          // re-measure when its tab is revealed (otherwise it paints at 0×0).
-          automaticLayout: true,
-          wordWrap: "on",
-          minimap: { enabled: false },
-          fontSize: 14,
-          lineNumbers: "off",
-          scrollBeyondLastLine: false,
-          padding: { top: 16 },
-        }}
+        options={MONACO_OPTIONS}
       />
     </div>
   );
 }
+
+/**
+ * Memoized so the Monaco wrapper isn't reconciled on unrelated parent re-renders. Its props are
+ * stable for a loaded tab (`onChange`/`onUndoExhausted`/`onRedoExhausted` are memoized upstream),
+ * so it re-renders only when `content`/`darkMode`/`language` actually change.
+ */
+export const MarkdownEditor = memo(MarkdownEditorImpl);
