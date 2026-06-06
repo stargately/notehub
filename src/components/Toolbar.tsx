@@ -1,7 +1,5 @@
 import { useRef, useState } from "react";
 import type { ProjectMeta, WeekFilter } from "../lib/types";
-import type { ThemeMode } from "../hooks/useDarkMode";
-import { ThemeIcon } from "./ThemeIcon";
 import { useKeymapAction } from "../lib/keymap/provider";
 import { ACTIONS } from "../lib/keymap/actions";
 
@@ -11,14 +9,12 @@ interface ToolbarProps {
   groupBy?: string | null;
   hideDone: boolean;
   showNotes: boolean;
-  themeMode: ThemeMode;
   weekFilter: WeekFilter;
   onFilterChange: (text: string) => void;
   onGroupByChange?: (field: string | null) => void;
   onToggleHideDone: () => void;
   onAddTask: () => void;
   onToggleNotes: () => void;
-  onCycleTheme: () => void;
   onWeekFilterChange: (filter: WeekFilter) => void;
   onToggleEditor?: () => void;
   /** Whether this toolbar's tab is the active one — gates its keymap shortcuts (Cmd+F/Cmd+N). */
@@ -30,13 +26,11 @@ export function Toolbar({
   filterText,
   hideDone,
   showNotes,
-  themeMode,
   weekFilter,
   onFilterChange,
   onToggleHideDone,
   onAddTask,
   onToggleNotes,
-  onCycleTheme,
   onWeekFilterChange,
   onToggleEditor,
   active = true,
@@ -163,15 +157,6 @@ export function Toolbar({
             Source
           </button>
         )}
-
-        <button
-          onClick={onCycleTheme}
-          className="nh-btn"
-          style={{ padding: "6px 8px" }}
-          title={`Theme: ${themeMode} (click to cycle)`}
-        >
-          <ThemeIcon themeMode={themeMode} />
-        </button>
 
         <button
           onMouseDown={(e) => {

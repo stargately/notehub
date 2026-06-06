@@ -3,8 +3,6 @@ import { useKeymapAction } from "../lib/keymap/provider";
 import { ACTIONS } from "../lib/keymap/actions";
 import { MarkdownWysiwyg } from "./MarkdownWysiwyg";
 import { QaFindBar } from "./QaFindBar";
-import { ThemeIcon } from "./ThemeIcon";
-import type { ThemeMode } from "../hooks/useDarkMode";
 import { printQaDocument } from "../lib/print";
 import {
   splitFrontmatter,
@@ -28,8 +26,6 @@ interface QaLayoutProps {
   /** Called with the rebuilt raw file whenever the user edits a cell. */
   onChange: (raw: string) => void;
   onToggleEditor: () => void;
-  onCycleTheme: () => void;
-  themeMode: ThemeMode;
   darkMode: boolean;
   projectName?: string;
   /** Base file name (no dir, no `.md`) — used as the print/PDF document title. */
@@ -60,7 +56,7 @@ function parse(content: string): ParsedState {
  * two-column row (question | answer). Edits round-trip back to raw markdown.
  */
 export function QaLayout({
-  content, onChange, onToggleEditor, onCycleTheme, themeMode, darkMode, projectName, fileName,
+  content, onChange, onToggleEditor, darkMode, projectName, fileName,
   variant = "qa", active = true,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
@@ -269,9 +265,6 @@ export function QaLayout({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
           </svg>
           Code
-        </button>
-        <button onClick={onCycleTheme} className="nh-btn" style={{ padding: "6px 8px" }} title={`Theme: ${themeMode} (click to cycle)`}>
-          <ThemeIcon themeMode={themeMode} />
         </button>
       </div>
 

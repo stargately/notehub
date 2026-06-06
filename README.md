@@ -196,6 +196,18 @@ and reopened on launch. Requires the desktop app (Tauri).
 **Tear a tab into its own window:** drag a tab out of the window and drop it anywhere outside — the
 document moves into a new window (just like Zed or a browser). Drop it back inside to cancel.
 
+## Status Bar
+
+A thin **status bar** runs along the bottom of the window (Zed-style), gathering the window's
+layout-level toggles in one place:
+
+- **Sidebar** — show/hide the file-tree sidebar (same as `Cmd+B`).
+- **Terminal** — show/hide the integrated terminal (same as `` Ctrl+` ``).
+- **Theme** (right edge) — cycle Light → Dark → System; the label shows the current mode.
+
+Active panels are tinted with the accent color. The current workspace folder name sits next to the
+panel toggles as a quick reminder of where you are.
+
 ### The File menu
 
 NoteHub uses the **native OS menu bar** (the macOS top-of-screen menu, Zed-style). Its **File** menu

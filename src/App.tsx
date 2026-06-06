@@ -13,6 +13,7 @@ import { refreshAllDirs } from "./lib/tree-refresh";
 import { TabBar } from "./components/TabBar";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { Sidebar } from "./components/Sidebar";
+import { StatusBar } from "./components/StatusBar";
 import { useNativeMenu } from "./hooks/useNativeMenu";
 import type { FileTreeHandle } from "./components/FileTree";
 import { QuickOpen } from "./components/QuickOpen";
@@ -107,14 +108,17 @@ function App() {
     [detachTab],
   );
 
+  // Shared by the Ctrl+` keymap action and the status-bar toggle button.
+  const toggleTerminal = useCallback(() => {
+    setShowTerminal((prev) => !prev);
+    setTerminalMounted(true);
+  }, []);
+
   // ── Global (workspace-level) keymap actions. Per-doc actions delegate to the active tab. ──
   useKeymapAction(ACTIONS.quickOpen, () => setQuickOpenOpen(true));
   useKeymapAction(ACTIONS.openFile, () => void handleAddTab());
   useKeymapAction(ACTIONS.toggleSidebar, () => toggleSidebar());
-  useKeymapAction(ACTIONS.toggleTerminal, () => {
-    setShowTerminal((prev) => !prev);
-    setTerminalMounted(true);
-  });
+  useKeymapAction(ACTIONS.toggleTerminal, toggleTerminal);
   useKeymapAction(ACTIONS.copyPath, () => {
     if (activeFilePath) navigator.clipboard.writeText(activeFilePath);
   });
@@ -234,8 +238,6 @@ function App() {
                     kind={tab.kind}
                     active={tab.id === activeTabId}
                     darkMode={darkMode}
-                    themeMode={themeMode}
-                    onCycleTheme={cycleThemeMode}
                     setTabs={setTabs}
                     undoHistory={undoHistory}
                     publishCommands={publishCommands}
@@ -254,6 +256,16 @@ function App() {
           )}
         </div>
       </div>
+
+      <StatusBar
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
+        terminalVisible={showTerminal}
+        onToggleTerminal={toggleTerminal}
+        themeMode={themeMode}
+        onCycleTheme={cycleThemeMode}
+        workspaceRoot={workspaceRoot}
+      />
     </div>
   );
 }

@@ -10,7 +10,6 @@ import { CONTEXTS } from "../lib/keymap/actions";
 import { serializeProjectMd } from "../lib/markdown-parser";
 import { deriveBaseName } from "../lib/print";
 import type { ProjectData, TabInfo, WeekFilter, FileKind } from "../lib/types";
-import type { ThemeMode } from "../hooks/useDarkMode";
 import type { UndoHistory } from "../hooks/useUndoHistory";
 import { TaskTable } from "./TaskTable";
 import { Toolbar } from "./Toolbar";
@@ -19,7 +18,6 @@ import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { RawFileEditor } from "./RawFileEditor";
 import { QaLayout } from "./QaLayout";
-import { ThemeIcon } from "./ThemeIcon";
 import { ConflictModal } from "./ConflictModal";
 
 /**
@@ -42,8 +40,6 @@ interface DocumentViewProps {
   /** Whether this is the active (focused, visible) tab. Gates keymap registration & command publish. */
   active: boolean;
   darkMode: boolean;
-  themeMode: ThemeMode;
-  onCycleTheme: () => void;
   /** Used by Save-As on an untitled doc to point this tab at its new path. */
   setTabs: React.Dispatch<React.SetStateAction<TabInfo[]>>;
   /** Shared, tab-id-keyed undo stacks (survive as long as the tab is open). */
@@ -61,7 +57,7 @@ interface DocumentViewProps {
  * one registers keymap actions/contexts.
  */
 export function DocumentView({
-  tabId, filePath, kind, active, darkMode, themeMode, onCycleTheme, setTabs, undoHistory, publishCommands,
+  tabId, filePath, kind, active, darkMode, setTabs, undoHistory, publishCommands,
 }: DocumentViewProps) {
   const isRawFile = kind === "raw" || kind === "image";
 
@@ -256,14 +252,6 @@ export function DocumentView({
               </svg>
               Grid View
             </button>
-            <button
-              onClick={onCycleTheme}
-              className="nh-btn"
-              style={{ padding: "6px 8px" }}
-              title={`Theme: ${themeMode} (click to cycle)`}
-            >
-              <ThemeIcon themeMode={themeMode} />
-            </button>
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -281,8 +269,6 @@ export function DocumentView({
           content={editorContent}
           onChange={handleEditorChange}
           onToggleEditor={handleToggleViewMode}
-          onCycleTheme={onCycleTheme}
-          themeMode={themeMode}
           darkMode={darkMode}
           projectName={projectData?.meta.project}
           fileName={deriveBaseName(filePath)}
@@ -303,8 +289,6 @@ export function DocumentView({
             onToggleHideDone={() => setHideDone(!hideDone)}
             onAddTask={handleAddTask}
             onToggleNotes={() => setShowNotes(!showNotes)}
-            themeMode={themeMode}
-            onCycleTheme={onCycleTheme}
             onWeekFilterChange={setWeekFilter}
             onToggleEditor={handleToggleViewMode}
             active={active}

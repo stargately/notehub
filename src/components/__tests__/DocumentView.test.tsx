@@ -23,7 +23,6 @@ vi.mock("../TaskTable", () => ({ TaskTable: () => null }));
 vi.mock("../MarkdownEditor", () => ({ MarkdownEditor: () => null }));
 vi.mock("../ProjectNotes", () => ({ ProjectNotes: () => null }));
 vi.mock("../TaskDetailDrawer", () => ({ TaskDetailDrawer: () => null }));
-vi.mock("../ThemeIcon", () => ({ ThemeIcon: () => null }));
 vi.mock("../ConflictModal", () => ({ ConflictModal: () => null }));
 vi.mock("../Toolbar", () => ({ Toolbar: () => null }));
 
@@ -71,8 +70,6 @@ function Harness() {
             kind={t.kind}
             active={t.id === activeId}
             darkMode={false}
-            themeMode="system"
-            onCycleTheme={() => {}}
             setTabs={() => {}}
             undoHistory={undoHistory}
             publishCommands={publishCommands}

@@ -248,6 +248,45 @@ button, a, input, select, textarea {
   background: var(--nh-bg-sunken);
 }
 
+/* ─── Status bar (Zed-style thin bottom bar) ─── */
+.nh-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0 6px;
+  font-size: 11px;
+  user-select: none;
+  background: var(--nh-bg-elevated);
+  border-top: 1px solid var(--nh-border);
+  color: var(--nh-text-secondary);
+}
+
+.nh-status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--nh-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nh-status-btn:hover {
+  background: var(--nh-bg-sunken);
+  color: var(--nh-text);
+}
+
+.nh-status-btn.active {
+  color: var(--nh-accent);
+}
+
 /* ─── Drawer slide-in animation ─── */
 @keyframes slideInRight {
   from { transform: translateX(20px); opacity: 0; }
