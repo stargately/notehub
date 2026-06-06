@@ -287,6 +287,37 @@ button, a, input, select, textarea {
   color: var(--nh-accent);
 }
 
+/* ─── Per-document header (thin, Zed-style title bar) ─── */
+.nh-doc-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  background: var(--nh-bg-elevated);
+  border-bottom: 1px solid var(--nh-border);
+}
+
+/* Compact icon-only action button (header actions; shortcut lives in the tooltip). */
+.nh-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--nh-text-secondary);
+  cursor: pointer;
+}
+
+.nh-icon-btn:hover {
+  background: var(--nh-bg-sunken);
+  color: var(--nh-text);
+}
+
 /* ─── Drawer slide-in animation ─── */
 @keyframes slideInRight {
   from { transform: translateX(20px); opacity: 0; }

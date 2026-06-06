@@ -20,3 +20,16 @@ editor header was removed (those no longer take `themeMode`/`onCycleTheme`).
 
 Tests: `__tests__/StatusBar.test.tsx` (toggle handler wiring, active tint + `aria-pressed`, and the
 `isTauri` gate that hides the panel toggles in browser mode).
+
+## Per-document header (thin Zed-style title bar)
+
+Every document view renders a thin (~30px) header titled by the **file name**
+(`deriveBaseName(filePath)` from `lib/print.ts`), **not** the `project:` frontmatter field — that
+field defaults to `"Untitled Project"` in the parser (`lib/markdown-parser.ts`) and is meaningless
+for plain/Q&A files, so showing it was inaccurate on most files. Three headers share this:
+`QaLayout` (plain/Q&A), the raw-editor header in `DocumentView` (`viewMode === "editor"`), and
+`Toolbar` (the `layout: todo` grid — `Toolbar` now takes a `fileName` prop and dropped its unused
+`meta`/title). Style: `.nh-doc-header` container + `.nh-icon-btn` icon-only actions (shortcuts in
+the `title` tooltip), in `styles/globals.css`. Regression tests: `__tests__/QaLayout.test.tsx` (real
+header — file-name title, `Untitled` fallback, variant badge, icon actions) and
+`__tests__/Toolbar.test.tsx` (grid header titles by file name, never "Untitled Project").

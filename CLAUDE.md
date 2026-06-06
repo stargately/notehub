@@ -121,7 +121,9 @@ npm run fmt:rust:check # cargo fmt -- --check
   file with no cross-write (plus the active tab's command bundle routing and raw-tab rendering);
   `components/__tests__/StatusBar` covers the bottom status bar's toggle wiring (sidebar/terminal/
   theme handlers), active-tint + `aria-pressed` state, and the `isTauri` gate hiding the panel
-  toggles in browser mode; the
+  toggles in browser mode; `components/__tests__/QaLayout` and `components/__tests__/Toolbar` lock in
+  the per-document header titling by **file name** (not the parser's `"Untitled Project"`
+  `meta.project` default), with `Untitled` fallback, variant badge, and the compact icon actions; the
   hook suites also cover the unmount-cancels-autosave guarantee — and the keymap engine
   `keymap/__tests__/` — `keystroke`, `context`, `keymap`, `user-keymap`, and `provider` (the
   `useKeymapAction(enabled)` gating that lets only the active tab claim a binding)).

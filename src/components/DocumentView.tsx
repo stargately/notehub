@@ -229,28 +229,22 @@ export function DocumentView({
 
       {viewMode === "editor" ? (
         <>
-          <div
-            className="flex flex-wrap items-center gap-2 px-4 py-2 border-b"
-            style={{ borderColor: "var(--nh-border)", background: "var(--nh-bg-elevated)" }}
-          >
-            <h1 className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--nh-text)" }}>
-              {projectData?.meta.project || "Untitled"}
-            </h1>
-            <span
-              className="px-2 py-0.5 text-[10px] rounded-full font-medium uppercase tracking-wide"
-              style={{ background: "var(--nh-accent-subtle)", color: "var(--nh-accent)" }}
-            >
+          <div className="nh-doc-header">
+            <span className="text-[13px] font-semibold truncate" style={{ color: "var(--nh-text)" }}>
+              {deriveBaseName(filePath) || "Untitled"}
+            </span>
+            <span className="text-[10px] uppercase tracking-wide shrink-0" style={{ color: "var(--nh-text-tertiary)" }}>
               Markdown
             </span>
-            <span className="text-[10px]" style={{ color: "var(--nh-text-tertiary)" }}>
-              {navigator.platform.includes("Mac") ? "Cmd" : "Ctrl"}+/ to switch
-            </span>
             <div className="flex-1" />
-            <button onClick={handleToggleViewMode} className="nh-btn">
+            <button
+              onClick={handleToggleViewMode}
+              className="nh-icon-btn"
+              title={`Grid view (${navigator.platform.includes("Mac") ? "⌘/" : "Ctrl+/"})`}
+            >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
-              Grid View
             </button>
           </div>
 
@@ -270,7 +264,6 @@ export function DocumentView({
           onChange={handleEditorChange}
           onToggleEditor={handleToggleViewMode}
           darkMode={darkMode}
-          projectName={projectData?.meta.project}
           fileName={deriveBaseName(filePath)}
           variant={isQa ? "qa" : "plain"}
           active={active}
@@ -278,7 +271,7 @@ export function DocumentView({
       ) : (
         <>
           <Toolbar
-            meta={projectData?.meta ?? { project: "", created: "", views: {}, columns: [], status_options: [], priority_options: [], assignee_options: [] }}
+            fileName={deriveBaseName(filePath)}
             filterText={filterText}
             groupBy={groupBy}
             hideDone={hideDone}

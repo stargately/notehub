@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
-import type { ProjectMeta, WeekFilter } from "../lib/types";
+import type { WeekFilter } from "../lib/types";
 import { useKeymapAction } from "../lib/keymap/provider";
 import { ACTIONS } from "../lib/keymap/actions";
 
 interface ToolbarProps {
-  meta: ProjectMeta;
+  /** Base file name (no dir, no `.md`) — shown as the document title (Zed-style). */
+  fileName?: string;
   filterText: string;
   groupBy?: string | null;
   hideDone: boolean;
@@ -22,7 +23,7 @@ interface ToolbarProps {
 }
 
 export function Toolbar({
-  meta,
+  fileName,
   filterText,
   hideDone,
   showNotes,
@@ -52,12 +53,12 @@ export function Toolbar({
         background: "var(--nh-bg-elevated)",
       }}
     >
-      {/* Project Name */}
+      {/* File name (Zed-style document title) */}
       <h1
         className="text-sm font-semibold whitespace-nowrap mr-1"
         style={{ color: "var(--nh-text)" }}
       >
-        {meta.project}
+        {fileName || "Untitled"}
       </h1>
 
       <div

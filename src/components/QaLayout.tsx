@@ -27,8 +27,7 @@ interface QaLayoutProps {
   onChange: (raw: string) => void;
   onToggleEditor: () => void;
   darkMode: boolean;
-  projectName?: string;
-  /** Base file name (no dir, no `.md`) — used as the print/PDF document title. */
+  /** Base file name (no dir, no `.md`) — the document title + print/PDF title. */
   fileName?: string;
   /**
    * "qa" → two-column Q&A doc (`layout: qa`). "plain" → a normal markdown file with
@@ -56,7 +55,7 @@ function parse(content: string): ParsedState {
  * two-column row (question | answer). Edits round-trip back to raw markdown.
  */
 export function QaLayout({
-  content, onChange, onToggleEditor, darkMode, projectName, fileName,
+  content, onChange, onToggleEditor, darkMode, fileName,
   variant = "qa", active = true,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
@@ -69,9 +68,9 @@ export function QaLayout({
 
   // Latest content/title in a ref so the print shortcut always uses current values.
   const printRef = useRef<() => void>(() => {});
-  // The browser's "Save as PDF" defaults the file name to the document <title>, so prefer
-  // the actual file name (consistent with the .md on disk) over the YAML project name.
-  printRef.current = () => void printQaDocument(content, fileName || projectName || "Untitled");
+  // The browser's "Save as PDF" defaults the file name to the document <title>, so use the
+  // actual file name (consistent with the .md on disk).
+  printRef.current = () => void printQaDocument(content, fileName || "Untitled");
 
   // ─── Find & replace state ───
   // Find/highlight runs over the rendered DOM (CSS Highlight API); replace runs over
@@ -236,35 +235,32 @@ export function QaLayout({
           onClose={closeFind}
         />
       )}
-      {/* Header bar (mirrors the Monaco editor header) */}
-      <div
-        className="nh-qa-topbar flex flex-wrap items-center gap-2 px-4 py-2 border-b"
-        style={{ borderColor: "var(--nh-border)", background: "var(--nh-bg-elevated)" }}
-      >
-        <h1 className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--nh-text)" }}>
-          {projectName || "Untitled"}
-        </h1>
-        <span
-          className="px-2 py-0.5 text-[10px] rounded-full font-medium uppercase tracking-wide"
-          style={{ background: "var(--nh-accent-subtle)", color: "var(--nh-accent)" }}
-        >
+      {/* Thin Zed-style header bar: file name + type badge + icon actions. */}
+      <div className="nh-qa-topbar nh-doc-header">
+        <span className="text-[13px] font-semibold truncate" style={{ color: "var(--nh-text)" }}>
+          {fileName || "Untitled"}
+        </span>
+        <span className="text-[10px] uppercase tracking-wide shrink-0" style={{ color: "var(--nh-text-tertiary)" }}>
           {variant === "qa" ? "Q&A" : "Markdown"}
         </span>
-        <span className="text-[10px]" style={{ color: "var(--nh-text-tertiary)" }}>
-          {isMac ? "Cmd" : "Ctrl"}+/ to edit raw · {isMac ? "Cmd" : "Ctrl"}+F to find · {isMac ? "Cmd" : "Ctrl"}+P to print
-        </span>
         <div className="flex-1" />
-        <button onClick={() => printRef.current()} className="nh-btn" title="Print (cheatsheet, letter size)">
+        <button
+          onClick={() => printRef.current()}
+          className="nh-icon-btn"
+          title={`Print cheatsheet (${isMac ? "⌘⇧P" : "Ctrl+Shift+P"})`}
+        >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" />
           </svg>
-          Print
         </button>
-        <button onClick={onToggleEditor} className="nh-btn">
+        <button
+          onClick={onToggleEditor}
+          className="nh-icon-btn"
+          title={`Edit raw markdown (${isMac ? "⌘/" : "Ctrl+/"})`}
+        >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
           </svg>
-          Code
         </button>
       </div>
 
