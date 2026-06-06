@@ -338,8 +338,11 @@ replace still work without it.
   keystroke doesn't retrigger Monaco's `updateOptions`); `TaskTable` (AG Grid) hoists `getRowId` and
   takes a stable `onTaskSelected` from `DocumentView`. Net effect: a tab's editor re-renders only
   when its own `active`/`filePath`/`darkMode`/content actually change, not on unrelated window
-  churn. Regression tests: `useUndoHistory` (stable identity) and `DocumentView` __tests__ (a parent
-  re-render with unchanged props does not re-render the editor).
+  churn. Within `layout: qa`, each per-block Milkdown editor is a memoized **`QaCell`** bound to a
+  stable `onEdit(field, value)` (`QaLayout`), so typing in one cell no longer reconciles every other
+  cell. Regression tests: `useUndoHistory` (stable identity), `DocumentView` __tests__ (a parent
+  re-render with unchanged props does not re-render the editor), and `QaLayout.perf` (editing one QA
+  cell re-renders only that cell).
 - **Browser fallback**: Runs without Tauri using `sample-project.md` for UI testing
 - **Dark mode**: Class-based (`dark` class), AG Grid + Tailwind themed. The **theme cycle**
   (light → dark → system) lives in the status bar, not the per-document toolbars.

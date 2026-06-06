@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 import { Crepe } from "@milkdown/crepe";
 import { diagram } from "@milkdown/plugin-diagram";
 import { mermaidNodeView } from "../lib/milkdown-mermaid";
@@ -19,7 +19,7 @@ interface MarkdownWysiwygProps {
  * Thin React wrapper around a Milkdown Crepe instance — a Typora-style WYSIWYG
  * markdown editor that round-trips to markdown. One instance per mount.
  */
-export function MarkdownWysiwyg({ value, onChange, placeholder, className, darkMode }: MarkdownWysiwygProps) {
+function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode }: MarkdownWysiwygProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const crepeRef = useRef<Crepe | null>(null);
 
@@ -66,3 +66,20 @@ export function MarkdownWysiwyg({ value, onChange, placeholder, className, darkM
 
   return <div ref={rootRef} className={className} />;
 }
+
+/**
+ * Memoized with a `value`-ignoring comparator. The editor is **mount-once**: Crepe reads `value`
+ * only as `defaultValue` at creation, after which Milkdown owns its own DOM — so a changed `value`
+ * never needs a re-render (QaLayout remounts via `key` when content changes externally). This skips
+ * the wrapper re-render of the very cell being typed in, whose `value` updates on every keystroke.
+ * `onChange` IS compared because the impl writes it into a ref during render; darkMode/placeholder
+ * only feed the initial Crepe construction.
+ */
+export const MarkdownWysiwyg = memo(
+  MarkdownWysiwygImpl,
+  (prev, next) =>
+    prev.onChange === next.onChange &&
+    prev.darkMode === next.darkMode &&
+    prev.placeholder === next.placeholder &&
+    prev.className === next.className,
+);

@@ -33,6 +33,25 @@ you add a prop to any of these, keep it referentially stable or the memo silentl
 Tests: `hooks/__tests__/useUndoHistory` (stable identity) + the memo assertion in
 `__tests__/DocumentView`.
 
+### `layout: qa` cells (`QaLayout`)
+
+A QA doc renders 2–3 Milkdown editors **per block**, so typing in one cell used to reconcile every
+cell (each `QaLayout` re-render re-ran `doc.blocks.map` with a fresh inline `onChange` per editor).
+Now each cell is a memoized **`QaCell`** bound to a single **stable `onEdit(field, value)`** handler
+(keyed by the cell's `data-qa-field`), and `commit`/`commitRemount`/`onEdit` are `useCallback`s
+(`commit` dep: the `onChange` prop). Because untouched blocks keep object + string identity through
+`applyFieldReplace`'s map, only the edited cell's `value` changes → only it re-renders; Milkdown is
+mount-once so even that is a cheap no-op. `applyFieldReplace` is hoisted to module scope (shared by
+`onEdit` and find/replace). Keys still carry `themeKey` (`mountKey`+dark), so external reloads and
+find/replace still remount the editors. Regression test: `__tests__/QaLayout.perf` (editing one cell
+of a 5-editor doc bumps the render count by exactly 1).
+
+`MarkdownWysiwyg` itself is `React.memo`'d with a **`value`-ignoring comparator**: it's mount-once
+(Crepe reads `value` only as `defaultValue`, then owns its own DOM), so the edited cell's wrapper
+skips re-rendering too — `onChange`/`darkMode`/`placeholder`/`className` are compared (onChange is
+written into a ref during render), `value` is not. `IS_MAC` is a module const (computed once, not per
+render).
+
 ## Per-document header (thin Zed-style title bar)
 
 Every document view renders a thin (~30px) header titled by the **file name**

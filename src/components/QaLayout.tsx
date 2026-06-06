@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useRef, useState } from "react";
 import { useKeymapAction } from "../lib/keymap/provider";
 import { ACTIONS } from "../lib/keymap/actions";
 import { MarkdownWysiwyg } from "./MarkdownWysiwyg";
@@ -19,6 +19,8 @@ import {
   replaceAllOccurrences,
   type QaMatch,
 } from "../lib/qa-find";
+
+const IS_MAC = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
 
 interface QaLayoutProps {
   /** Full raw file content (frontmatter + body). */
@@ -48,6 +50,57 @@ function parse(content: string): ParsedState {
   const { frontmatter, body } = splitFrontmatter(content);
   return { frontmatter, doc: parseQaBlocks(body) };
 }
+
+// Apply a string transform to one field (`header` | `block-<i>-left|right|after`) and return the
+// new ParsedState, or null if the field is unknown or the value is unchanged. Pure — hoisted so
+// it's shared by the cell edit handler and find/replace, and never a fresh closure per render.
+function applyFieldReplace(
+  state: ParsedState,
+  field: string,
+  fn: (value: string) => string,
+): ParsedState | null {
+  if (field === "header") {
+    const header = fn(state.doc.header);
+    if (header === state.doc.header) return null;
+    return { ...state, doc: { ...state.doc, header } };
+  }
+  const m = field.match(/^block-(\d+)-(left|right|after)$/);
+  if (!m) return null;
+  const i = Number(m[1]);
+  const side = m[2] as "left" | "right" | "after";
+  const block = state.doc.blocks[i];
+  if (!block) return null;
+  const current = block[side] ?? "";
+  const replaced = fn(current);
+  if (replaced === current) return null;
+  const blocks = state.doc.blocks.map((b, idx) => (idx === i ? { ...b, [side]: replaced } : b));
+  return { ...state, doc: { ...state.doc, blocks } };
+}
+
+interface QaCellProps {
+  /** The cell's `data-qa-field` (`header` | `block-<i>-left|right|after`) — its edit identity + find anchor. */
+  field: string;
+  className: string;
+  value: string;
+  darkMode: boolean;
+  placeholder: string;
+  /** Stable edit handler keyed by `field`; QaCell binds it so its `onChange` identity is stable. */
+  onEdit: (field: string, value: string) => void;
+}
+
+/**
+ * One memoized Milkdown cell. Because `onEdit` is stable and the bound `onChange` is `useCallback`d,
+ * editing one cell doesn't reconcile the others — each `QaLayout` re-render only touches the cell
+ * whose `value` actually changed (and Milkdown is mount-once, so even that is a cheap no-op render).
+ */
+const QaCell = memo(function QaCell({ field, className, value, darkMode, placeholder, onEdit }: QaCellProps) {
+  const handleChange = useCallback((v: string) => onEdit(field, v), [onEdit, field]);
+  return (
+    <div className={className} data-qa-field={field}>
+      <MarkdownWysiwyg value={value} onChange={handleChange} darkMode={darkMode} placeholder={placeholder} />
+    </div>
+  );
+});
 
 /**
  * Typora-style two-column Q&A view for `layout: qa` files. Renders pre-marker
@@ -127,38 +180,38 @@ export function QaLayout({
     scrollToMatch(matches[wrapped]);
   };
 
-  // Apply a string transform to one field ("header" | "block-<i>-left|right") and
-  // return the new ParsedState, or null if the field is unknown or unchanged.
-  const applyFieldReplace = (
-    state: ParsedState,
-    field: string,
-    fn: (value: string) => string,
-  ): ParsedState | null => {
-    if (field === "header") {
-      const header = fn(state.doc.header);
-      if (header === state.doc.header) return null;
-      return { ...state, doc: { ...state.doc, header } };
-    }
-    const m = field.match(/^block-(\d+)-(left|right|after)$/);
-    if (!m) return null;
-    const i = Number(m[1]);
-    const side = m[2] as "left" | "right" | "after";
-    const block = state.doc.blocks[i];
-    if (!block) return null;
-    const current = block[side] ?? "";
-    const replaced = fn(current);
-    if (replaced === current) return null;
-    const blocks = state.doc.blocks.map((b, idx) => (idx === i ? { ...b, [side]: replaced } : b));
-    return { ...state, doc: { ...state.doc, blocks } };
-  };
+  // Commit a new parsed state: update local state + serialize back to raw markdown for the file.
+  // Stable identity (dep: onChange) so the memoized QaCell children aren't re-rendered each edit.
+  const commit = useCallback(
+    (next: ParsedState) => {
+      setParsed(next);
+      parsedRef.current = next;
+      const raw = assembleQa(next.frontmatter, next.doc);
+      lastSyncedRef.current = raw; // mark as ours so the [content] effect ignores the echo
+      onChange(raw);
+    },
+    [onChange],
+  );
 
-  // Programmatic edits (replace) must remount the mount-once editors so the new text
-  // renders — commit() alone only updates React state for serialization, not the live
-  // Crepe DOM (normal typing updates the DOM itself, so it never bumps mountKey).
-  const commitRemount = (next: ParsedState) => {
-    commit(next);
-    setMountKey((k) => k + 1);
-  };
+  // Programmatic edits (replace) must remount the mount-once editors so the new text renders —
+  // commit() alone only updates React state for serialization, not the live Crepe DOM (normal
+  // typing updates the DOM itself, so it never bumps mountKey).
+  const commitRemount = useCallback(
+    (next: ParsedState) => {
+      commit(next);
+      setMountKey((k) => k + 1);
+    },
+    [commit],
+  );
+
+  // One stable edit handler for every cell (header/left/right/after), keyed by `data-qa-field`.
+  const onEdit = useCallback(
+    (field: string, value: string) => {
+      const next = applyFieldReplace(parsedRef.current, field, () => value);
+      if (next) commit(next);
+    },
+    [commit],
+  );
 
   const replaceCurrent = () => {
     const match = matchesRef.current[activeIndexRef.current];
@@ -192,27 +245,7 @@ export function QaLayout({
     }
   }, [content]);
 
-  const commit = (next: ParsedState) => {
-    setParsed(next);
-    parsedRef.current = next;
-    const raw = assembleQa(next.frontmatter, next.doc);
-    lastSyncedRef.current = raw; // mark as ours so the effect above ignores the echo
-    onChange(raw);
-  };
-
-  const updateHeader = (header: string) => {
-    const cur = parsedRef.current;
-    commit({ ...cur, doc: { ...cur.doc, header } });
-  };
-
-  const updateBlock = (index: number, side: "left" | "right" | "after", value: string) => {
-    const cur = parsedRef.current;
-    const blocks = cur.doc.blocks.map((b, i) => (i === index ? { ...b, [side]: value } : b));
-    commit({ ...cur, doc: { ...cur.doc, blocks } });
-  };
-
   const { doc } = parsed;
-  const isMac = navigator.platform.includes("Mac");
   // Remount editors on theme change so mermaid diagrams re-render in the matching theme.
   const themeKey = `${mountKey}-${darkMode ? "d" : "l"}`;
 
@@ -247,7 +280,7 @@ export function QaLayout({
         <button
           onClick={() => printRef.current()}
           className="nh-icon-btn"
-          title={`Print cheatsheet (${isMac ? "⌘⇧P" : "Ctrl+Shift+P"})`}
+          title={`Print cheatsheet (${IS_MAC ? "⌘⇧P" : "Ctrl+Shift+P"})`}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" />
@@ -256,7 +289,7 @@ export function QaLayout({
         <button
           onClick={onToggleEditor}
           className="nh-icon-btn"
-          title={`Edit raw markdown (${isMac ? "⌘/" : "Ctrl+/"})`}
+          title={`Edit raw markdown (${IS_MAC ? "⌘/" : "Ctrl+/"})`}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
@@ -266,43 +299,49 @@ export function QaLayout({
 
       <div ref={docRef} className="nh-qa-doc flex-1 overflow-y-auto">
         {(doc.header || doc.blocks.length === 0) && (
-          <div className="nh-qa-header" data-qa-field="header">
-            <MarkdownWysiwyg key={`h-${themeKey}`} value={doc.header} onChange={updateHeader} darkMode={darkMode} placeholder="Write here…" />
-          </div>
+          <QaCell
+            key={`h-${themeKey}`}
+            field="header"
+            className="nh-qa-header"
+            value={doc.header}
+            darkMode={darkMode}
+            placeholder="Write here…"
+            onEdit={onEdit}
+          />
         )}
 
         {doc.blocks.map((block, i) => (
-          <Fragment key={`b-${i}-${themeKey}`}>
+          <Fragment key={`b-${i}`}>
             <div className="nh-qa-row">
-              <div className="nh-qa-col nh-qa-col-left" data-qa-field={`block-${i}-left`}>
-                <MarkdownWysiwyg
-                  key={`l-${i}-${themeKey}`}
-                  value={block.left}
-                  onChange={(v) => updateBlock(i, "left", v)}
-                  darkMode={darkMode}
-                  placeholder="Question…"
-                />
-              </div>
-              <div className="nh-qa-col nh-qa-col-right" data-qa-field={`block-${i}-right`}>
-                <MarkdownWysiwyg
-                  key={`r-${i}-${themeKey}`}
-                  value={block.right}
-                  onChange={(v) => updateBlock(i, "right", v)}
-                  darkMode={darkMode}
-                  placeholder="Answer…"
-                />
-              </div>
+              <QaCell
+                key={`l-${i}-${themeKey}`}
+                field={`block-${i}-left`}
+                className="nh-qa-col nh-qa-col-left"
+                value={block.left}
+                darkMode={darkMode}
+                placeholder="Question…"
+                onEdit={onEdit}
+              />
+              <QaCell
+                key={`r-${i}-${themeKey}`}
+                field={`block-${i}-right`}
+                className="nh-qa-col nh-qa-col-right"
+                value={block.right}
+                darkMode={darkMode}
+                placeholder="Answer…"
+                onEdit={onEdit}
+              />
             </div>
             {block.after !== undefined && (
-              <div className="nh-qa-after" data-qa-field={`block-${i}-after`}>
-                <MarkdownWysiwyg
-                  key={`af-${i}-${themeKey}`}
-                  value={block.after}
-                  onChange={(v) => updateBlock(i, "after", v)}
-                  darkMode={darkMode}
-                  placeholder="Notes…"
-                />
-              </div>
+              <QaCell
+                key={`af-${i}-${themeKey}`}
+                field={`block-${i}-after`}
+                className="nh-qa-after"
+                value={block.after}
+                darkMode={darkMode}
+                placeholder="Notes…"
+                onEdit={onEdit}
+              />
             )}
           </Fragment>
         ))}
