@@ -1,9 +1,10 @@
-import { Fragment, memo, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from "react";
 import { useKeymapAction } from "../lib/keymap/provider";
 import { ACTIONS } from "../lib/keymap/actions";
 import { MarkdownWysiwyg } from "./MarkdownWysiwyg";
 import { QaFindBar } from "./QaFindBar";
 import { printQaDocument } from "../lib/print";
+import { toFraction, fromFraction } from "../lib/scroll-sync";
 import {
   splitFrontmatter,
   parseQaBlocks,
@@ -40,6 +41,8 @@ interface QaLayoutProps {
   variant?: "qa" | "plain";
   /** Whether this doc's tab is active — gates its keymap shortcuts (Cmd+F find, Cmd+Shift+P print). */
   active?: boolean;
+  /** Shared scroll-progress fraction carried across a Cmd+/ view toggle (see DocumentView). */
+  scrollRef?: MutableRefObject<number | null>;
 }
 
 interface ParsedState {
@@ -110,7 +113,7 @@ const QaCell = memo(function QaCell({ field, className, value, darkMode, placeho
  */
 export function QaLayout({
   content, onChange, onToggleEditor, darkMode, fileName,
-  variant = "qa", active = true,
+  variant = "qa", active = true, scrollRef,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
   // Bumped on EXTERNAL change / replace — used only to re-run the find match collection (the
@@ -184,6 +187,34 @@ export function QaLayout({
   }, [findOpen, query, caseSensitive, mountKey]);
 
   useEffect(() => () => clearHighlights(), []);
+
+  // Cmd+/ view toggle: on mount, resume the scroll progress carried over from the raw editor —
+  // re-applying across a few frames while the mount-once Milkdown editors create and the doc height
+  // settles. On unmount, hand our own progress back so the raw editor can resume at the same place.
+  useLayoutEffect(() => {
+    const el = docRef.current;
+    if (!el) return;
+    let raf = 0;
+    const incoming = scrollRef?.current;
+    if (incoming != null) {
+      if (scrollRef) scrollRef.current = null;
+      let prevHeight = -1;
+      let stable = 0;
+      let frames = 0;
+      const apply = () => {
+        el.scrollTop = fromFraction(incoming, el.scrollHeight, el.clientHeight);
+        stable = el.scrollHeight === prevHeight ? stable + 1 : 0;
+        prevHeight = el.scrollHeight;
+        if (stable < 2 && ++frames < 30) raf = requestAnimationFrame(apply);
+      };
+      raf = requestAnimationFrame(apply);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      if (scrollRef) scrollRef.current = toFraction(el.scrollTop, el.scrollHeight, el.clientHeight);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const gotoMatch = (next: number) => {
     const matches = matchesRef.current;

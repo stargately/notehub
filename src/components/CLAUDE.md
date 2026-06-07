@@ -42,8 +42,8 @@ Now each cell is a memoized **`QaCell`** bound to a single **stable `onEdit(fiel
 (`commit` dep: the `onChange` prop). Because untouched blocks keep object + string identity through
 `applyFieldReplace`'s map, only the edited cell's `value` changes → only it re-renders; Milkdown is
 mount-once so even that is a cheap no-op. `applyFieldReplace` is hoisted to module scope (shared by
-`onEdit` and find/replace). Keys still carry `themeKey` (`mountKey`+dark), so external reloads and
-find/replace still remount the editors. Regression test: `__tests__/QaLayout.perf` (editing one cell
+`onEdit` and find/replace). Cells remount only via the per-cell version in their key (see
+*Live-reload* below), never on typing. Regression test: `__tests__/QaLayout.perf` (editing one cell
 of a 5-editor doc bumps the render count by exactly 1).
 
 `MarkdownWysiwyg` itself is `React.memo`'d with a **`value`-ignoring comparator**: it's mount-once
@@ -61,6 +61,16 @@ leaves the user's cell (cursor) + the scroll position intact. `mountKey` survive
 find-recollect signal. The companion Monaco view-state preservation lives in `MarkdownEditor`
 (`saveViewState` in render → `restoreViewState` in a `[content]` effect). Tests:
 `__tests__/QaLayout.reload` (only the changed cell remounts) + `qa-parser` `diffChangedFields`.
+
+**Cmd+/ view-toggle scroll continuity.** Toggling between the WYSIWYG (`QaLayout`) and raw Monaco
+(`MarkdownEditor`) unmounts one view and mounts the other, which would otherwise land at the top.
+`DocumentView` owns a `viewScrollRef` (a `0..1` fraction, `lib/scroll-sync.ts` `toFraction`/
+`fromFraction`) passed to both: the outgoing view writes its fraction on unmount, the incoming one
+resumes it on mount — Monaco synchronously in `onMount` (its model lays out at once), `QaLayout`
+across a few rAFs (re-applying while the mount-once editors create and the doc height settles). The
+two views have very different heights, so a fraction (progress) is used rather than a line/pixel.
+The Monaco path needs a live browser, so it's verified manually; the fraction math is unit-tested
+(`__tests__/scroll-sync`).
 
 ## Per-document header (thin Zed-style title bar)
 

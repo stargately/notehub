@@ -1,5 +1,6 @@
 import Editor, { type OnMount, type EditorProps } from "@monaco-editor/react";
-import { memo, useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, type MutableRefObject } from "react";
+import { toFraction, fromFraction } from "../lib/scroll-sync";
 
 type MonacoEditor = Parameters<OnMount>[0];
 
@@ -9,6 +10,8 @@ interface MarkdownEditorProps {
   darkMode: boolean;
   /** Monaco language id; defaults to "markdown". Set when editing other text files. */
   language?: string;
+  /** Shared scroll-progress fraction carried across a Cmd+/ view toggle (see DocumentView). */
+  scrollRef?: MutableRefObject<number | null>;
   onUndoExhausted?: () => string | null;
   onRedoExhausted?: () => string | null;
 }
@@ -27,12 +30,26 @@ const MONACO_OPTIONS: EditorProps["options"] = {
   padding: { top: 16 },
 };
 
-function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown", onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
+function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown", scrollRef, onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialVersionRef = useRef<number>(0);
   const editorRef = useRef<MonacoEditor | null>(null);
   const lastContentRef = useRef(content);
   const pendingViewStateRef = useRef<ReturnType<MonacoEditor["saveViewState"]>>(null);
+  // Latest scroll fraction, tracked live so we can hand it off on unmount (the editor may already be
+  // disposed by then). `scrollRef` (from DocumentView) is the cross-view handoff slot.
+  const liveFractionRef = useRef(0);
+  const scrollRefProp = useRef(scrollRef);
+  scrollRefProp.current = scrollRef;
+
+  // Write our final scroll progress into the shared slot when this editor unmounts (Cmd+/ toggle),
+  // so the incoming WYSIWYG view can resume at the same place. A *layout*-effect cleanup so it runs
+  // before the incoming QaLayout's layout-effect restore reads the slot (same commit).
+  useLayoutEffect(() => {
+    return () => {
+      if (scrollRefProp.current) scrollRefProp.current.current = liveFractionRef.current;
+    };
+  }, []);
 
   // Preserve cursor + scroll across an external live-reload. When `content` changes from disk,
   // @monaco-editor/react replaces the whole document with one full-range edit, which collapses the
@@ -56,6 +73,20 @@ function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown"
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     editor.focus();
+
+    // Track scroll progress so it can be handed to the WYSIWYG view on a Cmd+/ toggle.
+    const layoutHeight = () => editor.getLayoutInfo().height;
+    editor.onDidScrollChange(() => {
+      liveFractionRef.current = toFraction(editor.getScrollTop(), editor.getScrollHeight(), layoutHeight());
+    });
+    // Resume the progress carried over from the previous (WYSIWYG) view, if any. Monaco lays the
+    // whole model out synchronously, so getScrollHeight is accurate immediately.
+    const incoming = scrollRefProp.current?.current;
+    if (incoming != null) {
+      scrollRefProp.current!.current = null;
+      editor.setScrollTop(fromFraction(incoming, editor.getScrollHeight(), layoutHeight()));
+      liveFractionRef.current = incoming;
+    }
 
     // Record the initial version to detect when native undo is exhausted
     const model = editor.getModel();

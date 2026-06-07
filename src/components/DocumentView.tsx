@@ -73,6 +73,11 @@ function DocumentViewImpl({
   // Content-based disk reconciliation, scoped to this one file (one tab per path → no sharing).
   const fileSync = useFileSync();
 
+  // Carries scroll progress (0..1) across a Cmd+/ view toggle: the outgoing view (QaLayout or the
+  // raw Monaco editor) writes its fraction on unmount, the incoming one restores it on mount, so
+  // toggling lands at roughly the same place instead of the top.
+  const viewScrollRef = useRef<number | null>(null);
+
   // Debounced onBeforeSave: coalesce rapid edits into one undo snapshot for this tab.
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSnapshotRef = useRef<string | null>(null);
@@ -256,6 +261,7 @@ function DocumentViewImpl({
               content={editorContent}
               onChange={handleEditorChange}
               darkMode={darkMode}
+              scrollRef={viewScrollRef}
               onUndoExhausted={handleUndoExhausted}
               onRedoExhausted={handleRedoExhausted}
             />
@@ -267,6 +273,7 @@ function DocumentViewImpl({
           onChange={handleEditorChange}
           onToggleEditor={handleToggleViewMode}
           darkMode={darkMode}
+          scrollRef={viewScrollRef}
           fileName={deriveBaseName(filePath)}
           variant={isQa ? "qa" : "plain"}
           active={active}
