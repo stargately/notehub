@@ -126,7 +126,10 @@ npm run fmt:rust:check # cargo fmt -- --check
   theme handlers), active-tint + `aria-pressed` state, and the `isTauri` gate hiding the panel
   toggles in browser mode; `components/__tests__/QaLayout` and `components/__tests__/Toolbar` lock in
   the per-document header titling by **file name** (not the parser's `"Untitled Project"`
-  `meta.project` default), with `Untitled` fallback, variant badge, and the compact icon actions; the
+  `meta.project` default), with `Untitled` fallback, variant badge, and the compact icon actions;
+  `components/__tests__/QaFindBar` + `components/__tests__/QaLayout.find` cover the find-bar focus
+  (focus on mount, **re-focus on a repeated Cmd+F** via `focusSignal`, and no focus-steal on
+  unrelated re-renders); the
   hook suites also cover the unmount-cancels-autosave guarantee — and the keymap engine
   `keymap/__tests__/` — `keystroke`, `context`, `keymap`, `user-keymap`, and `provider` (the
   `useKeymapAction(enabled)` gating that lets only the active tab claim a binding)).
@@ -365,7 +368,10 @@ routes to the same handlers, so the keymap entries for them are effectively supe
 - `Cmd+/` — Toggle raw markdown editor (formatted WYSIWYG ↔ raw for `layout: qa`)
 - `Cmd+F` — In the task view, focus the filter (Toolbar). In the `layout: qa` view, open the
   Find & replace bar (whole-document search; `Enter`/`Shift+Enter` navigate, `Esc` closes). Same
-  key, different action per context (`grid::FocusFilter` vs `editor::Find`).
+  key, different action per context (`grid::FocusFilter` vs `editor::Find`). Pressing `Cmd+F` again
+  while the bar is already open re-focuses + selects its input (like browsers) — `QaLayout` bumps a
+  `findFocusTick` that `QaFindBar` keys its focus effect on, since `setFindOpen(true)` alone is a
+  no-op that wouldn't re-focus.
 - `Cmd+P` — Open the quick-open fuzzy file finder (`QuickOpen.tsx`) over the workspace. `mod-p`
   binds with `shift` off, so `Cmd+Shift+P` (print) is a distinct binding, not a manual `!shiftKey` check.
 - `Cmd+O` — Open a file via the OS dialog (`file::Open` → `handleAddTab`).

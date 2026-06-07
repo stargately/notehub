@@ -146,6 +146,8 @@ export function QaLayout({
   // Find/highlight runs over the rendered DOM (CSS Highlight API); replace runs over
   // the markdown source strings in `parsed.doc`. See src/lib/qa-find.ts.
   const [findOpen, setFindOpen] = useState(false);
+  // Bumped on every Cmd+F so the find bar re-focuses its input even when already open.
+  const [findFocusTick, setFindFocusTick] = useState(0);
   const [query, setQuery] = useState("");
   const [replaceText, setReplaceText] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -164,7 +166,10 @@ export function QaLayout({
   // Cmd+Shift+P prints; Cmd+F opens the find bar (suppressing the broken WKWebView native find).
   // Both are dispatched by the global keymap while the QA editor is the active context.
   useKeymapAction(ACTIONS.print, () => printRef.current(), active);
-  useKeymapAction(ACTIONS.find, () => setFindOpen(true), active);
+  useKeymapAction(ACTIONS.find, () => {
+    setFindOpen(true);
+    setFindFocusTick((t) => t + 1); // re-focus the input even if the bar is already open
+  }, active);
 
   // Recompute matches when the query/case/open-state changes, and after the editors
   // remount (mountKey bumps on external change *and* on our own replace commits). The
@@ -313,6 +318,7 @@ export function QaLayout({
           onReplaceCurrent={replaceCurrent}
           onReplaceAll={replaceAll}
           onClose={closeFind}
+          focusSignal={findFocusTick}
         />
       )}
       {/* Thin Zed-style header bar: file name + type badge + icon actions. */}

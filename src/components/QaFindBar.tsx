@@ -16,6 +16,11 @@ interface QaFindBarProps {
   onReplaceCurrent: () => void;
   onReplaceAll: () => void;
   onClose: () => void;
+  /**
+   * Changes whenever Cmd+F is pressed (including while the bar is already open) — bumping it
+   * re-focuses and selects the find input, so a second Cmd+F returns focus to it (like browsers).
+   */
+  focusSignal?: number;
 }
 
 /**
@@ -25,15 +30,17 @@ interface QaFindBarProps {
 export function QaFindBar({
   query, replace, caseSensitive, matchCount, activeIndex,
   onQueryChange, onReplaceChange, onToggleCase, onNext, onPrev,
-  onReplaceCurrent, onReplaceAll, onClose,
+  onReplaceCurrent, onReplaceAll, onClose, focusSignal,
 }: QaFindBarProps) {
   const [showReplace, setShowReplace] = useState(false);
   const findInputRef = useRef<HTMLInputElement>(null);
 
+  // Focus + select on mount and again whenever `focusSignal` changes (a repeated Cmd+F). Selecting
+  // lets the user immediately overwrite the previous query.
   useEffect(() => {
     findInputRef.current?.focus();
     findInputRef.current?.select();
-  }, []);
+  }, [focusSignal]);
 
   const onFindKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
