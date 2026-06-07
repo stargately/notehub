@@ -8,6 +8,7 @@ import {
   splitFrontmatter,
   parseQaBlocks,
   assembleQa,
+  diffChangedFields,
   type QaDocument,
 } from "../lib/qa-parser";
 import {
@@ -112,12 +113,25 @@ export function QaLayout({
   variant = "qa", active = true,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
-  // Bumped only on EXTERNAL content changes, to force a remount of the (mount-once) editors.
+  // Bumped on EXTERNAL change / replace — used only to re-run the find match collection (the
+  // actual editor remounts are now driven per-cell by `versionsRef`, so a live reload only
+  // remounts the cells whose content changed and preserves cursor/scroll in the rest).
   const [mountKey, setMountKey] = useState(0);
   // The last raw string this view is in sync with (either received or emitted).
   const lastSyncedRef = useRef(content);
   const parsedRef = useRef(parsed);
   parsedRef.current = parsed;
+
+  // Per-cell remount version, keyed by `data-qa-field`. A cell remounts (recreating its mount-once
+  // Milkdown editor) only when its version bumps — which happens for the specific cells whose
+  // content changed on an external reload or a replace, never on normal typing.
+  const versionsRef = useRef<Map<string, number>>(new Map());
+  const cellKey = (field: string) => `${field}-${darkMode ? "d" : "l"}-v${versionsRef.current.get(field) ?? 0}`;
+  const bumpChanged = useCallback((oldDoc: QaDocument, newDoc: QaDocument) => {
+    for (const field of diffChangedFields(oldDoc, newDoc)) {
+      versionsRef.current.set(field, (versionsRef.current.get(field) ?? 0) + 1);
+    }
+  }, []);
 
   // Latest content/title in a ref so the print shortcut always uses current values.
   const printRef = useRef<() => void>(() => {});
@@ -195,13 +209,14 @@ export function QaLayout({
 
   // Programmatic edits (replace) must remount the mount-once editors so the new text renders —
   // commit() alone only updates React state for serialization, not the live Crepe DOM (normal
-  // typing updates the DOM itself, so it never bumps mountKey).
+  // typing updates the DOM itself). Bump only the cells whose content actually changed.
   const commitRemount = useCallback(
     (next: ParsedState) => {
+      bumpChanged(parsedRef.current.doc, next.doc);
       commit(next);
       setMountKey((k) => k + 1);
     },
-    [commit],
+    [commit, bumpChanged],
   );
 
   // One stable edit handler for every cell (header/left/right/after), keyed by `data-qa-field`.
@@ -234,20 +249,21 @@ export function QaLayout({
     commitRemount({ ...cur, doc: { header, blocks } });
   };
 
-  // External content changes (reload, Monaco edit, tab switch) → re-parse + remount.
+  // External content changes (live reload, Monaco raw-edit, tab switch) → re-parse. Only the cells
+  // whose content changed remount (via `bumpChanged`); unchanged cells keep their editor — so the
+  // user's cursor and the scroll position survive a reload that touched a different cell.
   useEffect(() => {
     if (content !== lastSyncedRef.current) {
       lastSyncedRef.current = content;
       const next = parse(content);
+      bumpChanged(parsedRef.current.doc, next.doc);
       setParsed(next);
       parsedRef.current = next;
       setMountKey((k) => k + 1);
     }
-  }, [content]);
+  }, [content, bumpChanged]);
 
   const { doc } = parsed;
-  // Remount editors on theme change so mermaid diagrams re-render in the matching theme.
-  const themeKey = `${mountKey}-${darkMode ? "d" : "l"}`;
 
   return (
     <div className="nh-qa-layout relative flex-1 flex flex-col overflow-hidden">
@@ -300,7 +316,7 @@ export function QaLayout({
       <div ref={docRef} className="nh-qa-doc flex-1 overflow-y-auto">
         {(doc.header || doc.blocks.length === 0) && (
           <QaCell
-            key={`h-${themeKey}`}
+            key={cellKey("header")}
             field="header"
             className="nh-qa-header"
             value={doc.header}
@@ -314,7 +330,7 @@ export function QaLayout({
           <Fragment key={`b-${i}`}>
             <div className="nh-qa-row">
               <QaCell
-                key={`l-${i}-${themeKey}`}
+                key={cellKey(`block-${i}-left`)}
                 field={`block-${i}-left`}
                 className="nh-qa-col nh-qa-col-left"
                 value={block.left}
@@ -323,7 +339,7 @@ export function QaLayout({
                 onEdit={onEdit}
               />
               <QaCell
-                key={`r-${i}-${themeKey}`}
+                key={cellKey(`block-${i}-right`)}
                 field={`block-${i}-right`}
                 className="nh-qa-col nh-qa-col-right"
                 value={block.right}
@@ -334,7 +350,7 @@ export function QaLayout({
             </div>
             {block.after !== undefined && (
               <QaCell
-                key={`af-${i}-${themeKey}`}
+                key={cellKey(`block-${i}-after`)}
                 field={`block-${i}-after`}
                 className="nh-qa-after"
                 value={block.after}

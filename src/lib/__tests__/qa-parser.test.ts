@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitFrontmatter, parseQaBlocks, assembleQa } from "../qa-parser";
+import { splitFrontmatter, parseQaBlocks, assembleQa, diffChangedFields } from "../qa-parser";
 
 describe("splitFrontmatter", () => {
   it("splits a leading frontmatter block from the body verbatim", () => {
@@ -126,5 +126,33 @@ describe("assembleQa round-trip", () => {
     expect(out).toContain("layout: qa");
     expect(out).not.toContain("project:");
     expect(out).not.toContain("columns:");
+  });
+});
+
+describe("diffChangedFields", () => {
+  const doc = (header: string, blocks: { left: string; right: string; after?: string }[]) => ({ header, blocks });
+
+  it("returns nothing when the documents are identical", () => {
+    const a = doc("H", [{ left: "Q1", right: "A1" }, { left: "Q2", right: "A2" }]);
+    const b = doc("H", [{ left: "Q1", right: "A1" }, { left: "Q2", right: "A2" }]);
+    expect(diffChangedFields(a, b)).toEqual([]);
+  });
+
+  it("reports only the cell that changed (the live-reload case)", () => {
+    const a = doc("H", [{ left: "Q1", right: "A1" }, { left: "Q2", right: "A2" }]);
+    const b = doc("H", [{ left: "Q1", right: "A1" }, { left: "Q2", right: "A2 EDITED" }]);
+    expect(diffChangedFields(a, b)).toEqual(["block-1-right"]);
+  });
+
+  it("reports the header and an added/removed block", () => {
+    const a = doc("H", [{ left: "Q1", right: "A1" }]);
+    const b = doc("H2", [{ left: "Q1", right: "A1" }, { left: "Q2", right: "A2" }]);
+    expect(diffChangedFields(a, b)).toEqual(["header", "block-1-left", "block-1-right"]);
+  });
+
+  it("treats an added/dropped `after` band as a change", () => {
+    const a = doc("H", [{ left: "Q1", right: "A1" }]);
+    const b = doc("H", [{ left: "Q1", right: "A1", after: "note" }]);
+    expect(diffChangedFields(a, b)).toEqual(["block-0-after"]);
   });
 });

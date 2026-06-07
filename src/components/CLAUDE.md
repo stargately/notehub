@@ -52,6 +52,16 @@ skips re-rendering too — `onChange`/`darkMode`/`placeholder`/`className` are c
 written into a ref during render), `value` is not. `IS_MAC` is a module const (computed once, not per
 render).
 
+**Live-reload cursor/scroll preservation.** Each cell carries a per-`data-qa-field` remount
+**version** (`versionsRef`); its React `key` is `${field}-${dark}-v${version}`. A version bumps only
+for the cells whose content changed — computed by `diffChangedFields(oldDoc, newDoc)` (qa-parser,
+unit-tested) — on an external reload (the `[content]` effect) or a find/replace (`commitRemount`),
+never on normal typing. So a live reload that touched a different cell remounts only that cell and
+leaves the user's cell (cursor) + the scroll position intact. `mountKey` survives only as the
+find-recollect signal. The companion Monaco view-state preservation lives in `MarkdownEditor`
+(`saveViewState` in render → `restoreViewState` in a `[content]` effect). Tests:
+`__tests__/QaLayout.reload` (only the changed cell remounts) + `qa-parser` `diffChangedFields`.
+
 ## Per-document header (thin Zed-style title bar)
 
 Every document view renders a thin (~30px) header titled by the **file name**

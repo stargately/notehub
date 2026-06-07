@@ -1,5 +1,7 @@
 import Editor, { type OnMount, type EditorProps } from "@monaco-editor/react";
-import { memo, useCallback, useRef } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
+
+type MonacoEditor = Parameters<OnMount>[0];
 
 interface MarkdownEditorProps {
   content: string;
@@ -28,10 +30,31 @@ const MONACO_OPTIONS: EditorProps["options"] = {
 function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown", onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialVersionRef = useRef<number>(0);
+  const editorRef = useRef<MonacoEditor | null>(null);
+  const lastContentRef = useRef(content);
+  const pendingViewStateRef = useRef<ReturnType<MonacoEditor["saveViewState"]>>(null);
+
+  // Preserve cursor + scroll across an external live-reload. When `content` changes from disk,
+  // @monaco-editor/react replaces the whole document with one full-range edit, which collapses the
+  // cursor to the doc end. We snapshot the view state *here in render* — before that child effect
+  // runs (children's effects fire before this parent's) and while the model still holds the old
+  // text — then restore it in the effect below. For a local edit this snapshots the current state
+  // and restores it unchanged (a no-op), so no flag is needed to distinguish the two.
+  if (content !== lastContentRef.current) {
+    lastContentRef.current = content;
+    pendingViewStateRef.current = editorRef.current?.saveViewState() ?? null;
+  }
+  useEffect(() => {
+    const ed = editorRef.current;
+    const vs = pendingViewStateRef.current;
+    pendingViewStateRef.current = null;
+    if (ed && vs) ed.restoreViewState(vs);
+  }, [content]);
 
   const handleChange = useCallback((value: string | undefined) => onChange(value ?? ""), [onChange]);
 
   const handleMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
     editor.focus();
 
     // Record the initial version to detect when native undo is exhausted

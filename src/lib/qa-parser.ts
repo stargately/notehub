@@ -105,6 +105,27 @@ export function parseQaBlocks(body: string): QaDocument {
 }
 
 /**
+ * Compare two parsed QA documents and return the `data-qa-field` ids whose content changed
+ * (`header`, `block-<i>-left|right|after`). Lets a live-reload remount only the cells an external
+ * edit actually touched, so the user's cursor/scroll survive in every cell that didn't change
+ * under them. A field present on one side but not the other (block added/removed, `after`
+ * added/dropped) counts as changed.
+ */
+export function diffChangedFields(oldDoc: QaDocument, newDoc: QaDocument): string[] {
+  const changed: string[] = [];
+  if (oldDoc.header !== newDoc.header) changed.push("header");
+  const count = Math.max(oldDoc.blocks.length, newDoc.blocks.length);
+  for (let i = 0; i < count; i++) {
+    const o = oldDoc.blocks[i];
+    const b = newDoc.blocks[i];
+    for (const side of ["left", "right", "after"] as const) {
+      if (o?.[side] !== b?.[side]) changed.push(`block-${i}-${side}`);
+    }
+  }
+  return changed;
+}
+
+/**
  * Rebuild a full raw file from frontmatter + a QA document. Inverse of
  * `splitFrontmatter` + `parseQaBlocks` (stable for normalized input).
  */
