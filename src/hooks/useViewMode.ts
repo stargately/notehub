@@ -127,7 +127,12 @@ export function useViewMode({
   );
 
   const handleSave = useCallback(async () => {
-    if (viewMode === "editor") {
+    // Raw docs (`layout: qa` + plain markdown) edit `editorContent` as a verbatim raw string —
+    // in BOTH the WYSIWYG (QaLayout, viewMode "grid") and the Monaco editor view. They must save
+    // that string directly and must NEVER go through `flushSave`/`serializeProjectMd`, which would
+    // emit the task-table template (`project: "Untitled Project"` + `## Tasks`) over the document.
+    // Only `layout: todo` grid docs round-trip through the task serializer below.
+    if (isRawDoc || viewMode === "editor") {
       if (!activeFilePath) {
         const newPath = await saveFileDialog();
         if (!newPath) return;
@@ -170,7 +175,7 @@ export function useViewMode({
     } else {
       flushSave();
     }
-  }, [viewMode, activeFilePath, synced, activeTabId, projectData, editorContent, flushSave, setTabs]);
+  }, [isRawDoc, viewMode, activeFilePath, synced, activeTabId, projectData, editorContent, flushSave, setTabs]);
 
   // Cancel any pending editor autosave on unmount. A tab's DocumentView unmounts when the tab
   // closes, so this stops a debounced write from re-creating a just-deleted/closed file.

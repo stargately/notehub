@@ -64,6 +64,24 @@ describe("useViewMode tab-content isolation", () => {
     expect(writeFileMock.mock.calls[0][1]).toBe("REAL EDIT IN B");
   });
 
+  it("Cmd+S on a plain doc in WYSIWYG saves the raw editorContent, not the task-table template", async () => {
+    // Regression: a plain/qa doc renders in the WYSIWYG view (viewMode defaults to "grid").
+    // Saving used to fall through to `flushSave` → `serializeProjectMd`, which emits the
+    // `project: "Untitled Project"` + `## Tasks` template and clobbers the document.
+    const flushSave = vi.fn();
+    const { result } = renderHook((props) => useViewMode(props), {
+      initialProps: { ...base, flushSave, activeTabId: "tabA", activeFilePath: "/a.md", projectData: docA, loadedPath: "/a.md" },
+    });
+
+    act(() => result.current.handleEditorChange("edited markdown body"));
+    await act(async () => { await result.current.handleSave(); });
+
+    // The raw body is written directly; the task serializer is never invoked.
+    expect(flushSave).not.toHaveBeenCalled();
+    expect(writeFileMock).toHaveBeenCalledWith("/a.md", "edited markdown body");
+    expect(writeFileMock.mock.calls.every(([, c]) => !c.includes("Untitled Project"))).toBe(true);
+  });
+
   it("cancels a pending editor autosave on unmount (tab close can't recreate a deleted file)", async () => {
     const { result, unmount } = renderHook((props) => useViewMode(props), {
       initialProps: { ...base, activeTabId: "tabB", activeFilePath: "/b.md", projectData: docB, loadedPath: "/b.md" },
