@@ -51,6 +51,7 @@ notehub/
 │   │   ├── tear-off.ts        # pure predicate: was a dragged tab released outside the window?
 │   │   ├── keymap/            # Zed-style keymap: keystroke/context/matcher + provider & hooks
 │   │   ├── milkdown-mermaid.ts # Mermaid SVG node view for Milkdown
+│   │   ├── pm-plain-paste.ts   # Cmd+Shift+V "paste as plain text" for the ProseMirror editors
 │   │   ├── print.ts            # Render layout: qa to a print cheatsheet HTML
 │   │   └── tauri-api.ts        # Tauri IPC bridge
 │   └── styles/globals.css      # Tailwind + AG Grid theme
@@ -110,7 +111,7 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — tests live in adjacent `__tests__/` dirs. Coverage spans pure
   `src/lib/` modules (`markdown-parser`, `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`,
-  `tree-refresh`, `fuzzy`, `tear-off`, `recent-files` + the keymap engine `keymap/__tests__/`:
+  `tree-refresh`, `fuzzy`, `tear-off`, `recent-files`, `pm-plain-paste` + the keymap engine `keymap/__tests__/`:
   `keystroke`/`context`/`keymap`/`user-keymap`/`provider`), the buffer/sync hooks (`useFileSync`,
   `useProjectFile`, `useViewMode`, `useRawFile`, `useTabManagement`, `useUndoHistory`, `useNativeMenu`),
   and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`). The load-bearing
@@ -307,6 +308,20 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
   to a stable `onEdit(field, value)`, so typing in one cell doesn't reconcile the others. Net effect: a
   tab's editor re-renders only when its own `active`/`filePath`/`darkMode`/content change. Tests:
   `useUndoHistory`, `DocumentView`, `QaLayout.perf`.
+- **Paste as plain text** (`Cmd+Shift+V`, `src/lib/pm-plain-paste.ts`): a Typora-style plain paste
+  for the ProseMirror-backed editors. Because the binding routes through the app keymap, the handler
+  runs from a `keydown` where no native `ClipboardEvent` exists — so it reads `navigator.clipboard.
+  readText()` (async; fails gracefully if the WKWebView rejects) and inserts via a **programmatic
+  `tr.insertText`**. That path bypasses ProseMirror input rules, so the text is literal and
+  uninterpreted — pasting `# foo` inserts the characters, never a heading (plain `Cmd+V` keeps the
+  formatted, markdown-aware paste). A small module-level **registry** keys each mounted editor by its
+  contenteditable; the single handler (`pasteAsPlainText`) captures the **focused** view *synchronously*
+  (before the async read can move focus) and dispatches into it — this is how `QaLayout`'s many
+  mount-once Milkdown cells route to the right cell from one registration. `MarkdownWysiwyg` registers
+  its Crepe view (via `editorViewCtx`) and `TaskDetailDrawer` its Tiptap view (`editor.view`); both
+  `useKeymapAction(…, active)` so only the active tab claims the binding. The edit flows through the
+  editors' normal `markdownUpdated`/`onUpdate` → save path (no special-casing in `useFileSync`).
+  Tests: `src/lib/__tests__/pm-plain-paste.test.ts` (focus routing, sync capture, empty/rejected clipboard).
 - **Browser fallback**: runs without Tauri using `sample-project.md` for UI testing.
 - **Dark mode**: class-based (`dark`), AG Grid + Tailwind themed. The **theme cycle** (light → dark →
   system) lives in the status bar.
@@ -324,6 +339,11 @@ remap anything via **File → Keyboard Shortcuts…** (`KeybindingsHelp.tsx`). D
 - `Cmd+N` — New task (Grid context)
 - `Cmd+S` — Save (Save As for untitled)
 - `Cmd+/` — Toggle raw markdown editor (formatted WYSIWYG ↔ raw for `layout: qa`)
+- `Cmd+Shift+V` — Paste as plain text (`editor::PasteAsPlainText`), Typora-style: insert the
+  clipboard's `text/plain` as **literal, uninterpreted** characters at the cursor in the
+  ProseMirror-backed editors (Milkdown cells + the Tiptap task drawer). Bound in the `QA` and `Grid`
+  contexts; Monaco views don't register it (their paste is already plain). See *Paste as plain text*
+  under Architecture Notes.
 - `Cmd+F` — Task view: focus the filter (Toolbar). `layout: qa` view: open the Find & replace bar
   (`Enter`/`Shift+Enter` navigate, `Esc` closes) — different action per context (`grid::FocusFilter`
   vs `editor::Find`). Pressing `Cmd+F` again while open re-focuses + selects its input (browser-like)

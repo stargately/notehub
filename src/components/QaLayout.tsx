@@ -4,6 +4,7 @@ import { ACTIONS } from "../lib/keymap/actions";
 import { MarkdownWysiwyg } from "./MarkdownWysiwyg";
 import { QaFindBar } from "./QaFindBar";
 import { printQaDocument } from "../lib/print";
+import { pasteAsPlainText } from "../lib/pm-plain-paste";
 import { toFraction, fromFraction } from "../lib/scroll-sync";
 import {
   splitFrontmatter,
@@ -170,6 +171,8 @@ export function QaLayout({
     setFindOpen(true);
     setFindFocusTick((t) => t + 1); // re-focus the input even if the bar is already open
   }, active);
+  // Cmd+Shift+V — paste the clipboard as literal text into the focused Milkdown cell.
+  useKeymapAction(ACTIONS.pasteAsPlainText, () => void pasteAsPlainText(), active);
 
   // Recompute matches when the query/case/open-state changes, and after the editors
   // remount (mountKey bumps on external change *and* on our own replace commits). The

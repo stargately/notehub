@@ -1,7 +1,9 @@
 import { memo, useEffect, useRef } from "react";
 import { Crepe } from "@milkdown/crepe";
+import { editorViewCtx } from "@milkdown/kit/core";
 import { diagram } from "@milkdown/plugin-diagram";
 import { mermaidNodeView } from "../lib/milkdown-mermaid";
+import { registerPmView, type PmInsertView } from "../lib/pm-plain-paste";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/classic.css";
 
@@ -53,10 +55,27 @@ function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode
     const created = crepe.create();
     crepeRef.current = crepe;
 
+    // Expose this editor's ProseMirror view so the window-level Cmd+Shift+V handler can insert
+    // plain text into it when it's the focused cell. Guard against the unmount-before-create race.
+    let unregister: (() => void) | null = null;
+    let disposed = false;
+    created.then(() => {
+      if (disposed) return;
+      try {
+        crepe.editor.action((ctx) => {
+          unregister = registerPmView(ctx.get(editorViewCtx) as unknown as PmInsertView);
+        });
+      } catch {
+        // Editor torn down / not ready — nothing to register.
+      }
+    });
+
     return () => {
       // Destroy only after creation settles, so StrictMode's mount→unmount→mount
       // double-invoke doesn't tear down a half-initialized editor.
+      disposed = true;
       created.then(() => crepe.destroy());
+      unregister?.();
       crepeRef.current = null;
     };
     // Create exactly once per mount. `value`/`placeholder` are read at creation only;

@@ -42,6 +42,7 @@ export const DEFAULT_KEYMAP: Keymap = [
       "mod-shift-z": "editor::Redo",
       "mod-n": "grid::NewTask",
       "mod-f": "grid::FocusFilter",
+      "mod-shift-v": "editor::PasteAsPlainText", // into the Tiptap task-description drawer
     },
   },
   {
@@ -50,6 +51,7 @@ export const DEFAULT_KEYMAP: Keymap = [
     bindings: {
       "mod-shift-p": "editor::Print",
       "mod-f": "editor::Find",
+      "mod-shift-v": "editor::PasteAsPlainText", // into the focused Milkdown cell
     },
   },
   {

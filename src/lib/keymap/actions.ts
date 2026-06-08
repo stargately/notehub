@@ -21,6 +21,7 @@ export const ACTIONS = {
   redo: "editor::Redo",
   find: "editor::Find",
   print: "editor::Print",
+  pasteAsPlainText: "editor::PasteAsPlainText", // Cmd+Shift+V — insert clipboard as literal text
 
   // grid / task table
   newTask: "grid::NewTask",

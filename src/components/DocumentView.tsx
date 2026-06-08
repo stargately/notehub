@@ -329,6 +329,7 @@ function DocumentViewImpl({
                         onDescriptionChange={handleDescriptionChange}
                         onDelete={handleDeleteTask}
                         onClose={() => setSelectedTaskId(null)}
+                        active={active}
                       />
                     </div>
                   )}

@@ -2,6 +2,9 @@ import { useEffect, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
+import { useKeymapAction } from "../lib/keymap/provider";
+import { ACTIONS } from "../lib/keymap/actions";
+import { registerPmView, pasteAsPlainText, type PmInsertView } from "../lib/pm-plain-paste";
 import type { Task } from "../lib/types";
 
 interface TaskDetailDrawerProps {
@@ -9,6 +12,8 @@ interface TaskDetailDrawerProps {
   onDescriptionChange: (taskId: string, description: string) => void;
   onDelete: (taskId: string) => void;
   onClose: () => void;
+  /** Whether the owning tab is active — gates the Cmd+Shift+V keymap registration. */
+  active?: boolean;
 }
 
 export function TaskDetailDrawer({
@@ -16,6 +21,7 @@ export function TaskDetailDrawer({
   onDescriptionChange,
   onDelete,
   onClose,
+  active = true,
 }: TaskDetailDrawerProps) {
   const editor = useEditor({
     extensions: [
@@ -43,6 +49,16 @@ export function TaskDetailDrawer({
       }
     }
   }, [editor, task.id, task.description]);
+
+  // Expose this Tiptap editor's ProseMirror view so the window-level Cmd+Shift+V handler can
+  // insert plain text into it while it's focused.
+  useEffect(() => {
+    if (!editor) return;
+    return registerPmView(editor.view as unknown as PmInsertView);
+  }, [editor]);
+
+  // Cmd+Shift+V — paste the clipboard as literal text (only the active tab's drawer registers).
+  useKeymapAction(ACTIONS.pasteAsPlainText, () => void pasteAsPlainText(), active);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {

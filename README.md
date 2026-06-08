@@ -125,6 +125,9 @@ edit the raw fence via the raw editor. Tables render inline too.
 - A file with no markers is just one full-width editor.
 
 Press `Cmd+/` to switch between the formatted editor and the raw markdown code editor.
+Press `Cmd+Shift+V` to **paste as plain text** — the clipboard is inserted as literal,
+unformatted characters with no markdown interpretation (`# foo` stays `# foo`, never a heading),
+just like Typora's "Paste as Plain Text". Plain `Cmd+V` keeps its formatted, markdown-aware paste.
 Press `Cmd+F` to open the find & replace bar — it searches the whole document (header
 plus every question/answer column), highlights matches, navigates with `Enter` /
 `Shift+Enter`, and can replace the current match or all of them. `Esc` closes it.
@@ -287,6 +290,7 @@ The defaults:
 | `Cmd+R` | Reload file |
 | `Cmd+S` | Save (or Save As for untitled) |
 | `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa` and plain markdown files) |
+| `Cmd+Shift+V` | Paste as plain text — insert the clipboard as literal, unformatted text (Typora-style) in the WYSIWYG editors |
 | `Cmd+P` | Quick-open: fuzzy file finder over the workspace |
 | `Cmd+Shift+P` | Print the QA doc (compact cheatsheet, letter size) |
 | `Cmd+B` | Toggle the workspace file-tree sidebar |
