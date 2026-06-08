@@ -129,6 +129,45 @@ describe("assembleQa round-trip", () => {
   });
 });
 
+describe("rich WYSIWYG content round-trips verbatim", () => {
+  // The Crepe editor emits plain markdown for math ($…$), task lists (- [ ]), GFM tables,
+  // fenced code, and ```mermaid fences. The QA parser is line-based and never interprets that
+  // syntax, so cell content must pass through parse → assemble → parse unchanged (the
+  // parser-layer half of the round-trip; Milkdown's getMarkdown owns the other half).
+  const MATH = "Inline $E = mc^2$ and a block:\n\n$$\n\\int_0^1 x^2 dx\n$$";
+  const TASKS = "- [ ] todo item\n- [x] done item";
+  const TABLE = "| A | B |\n| --- | --- |\n| 1 | 2 |";
+  const CODE = "```ts\nconst x: number = 1;\n```";
+  const MERMAID = "```mermaid\ngraph TD;\n  A-->B;\n```";
+
+  for (const [name, content] of Object.entries({ MATH, TASKS, TABLE, CODE, MERMAID })) {
+    it(`preserves ${name} as a plain-doc header (no markers)`, () => {
+      const doc = parseQaBlocks(content);
+      expect(doc.header).toBe(content);
+      expect(doc.blocks).toHaveLength(0);
+      const rebuilt = assembleQa("---\nlayout: qa\n---\n", doc);
+      expect(rebuilt).toContain(content);
+      const reparsed = splitFrontmatter(rebuilt);
+      expect(reparsed.frontmatter).toContain("layout: qa");
+      expect(parseQaBlocks(reparsed.body)).toEqual(doc);
+    });
+
+    it(`preserves ${name} inside a QA answer column`, () => {
+      const body = ["**>>>**", "the question", "**<<<**", content].join("\n");
+      const doc = parseQaBlocks(body);
+      expect(doc.blocks).toEqual([{ left: "the question", right: content }]);
+      const rebuilt = assembleQa("", doc);
+      expect(parseQaBlocks(splitFrontmatter(rebuilt).body)).toEqual(doc);
+    });
+  }
+
+  it("does not let table pipes or task brackets be mistaken for markers", () => {
+    const body = ["**>>>**", TABLE, "**<<<**", TASKS].join("\n");
+    const doc = parseQaBlocks(body);
+    expect(doc.blocks).toEqual([{ left: TABLE, right: TASKS }]);
+  });
+});
+
 describe("diffChangedFields", () => {
   const doc = (header: string, blocks: { left: string; right: string; after?: string }[]) => ({ header, blocks });
 

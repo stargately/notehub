@@ -511,6 +511,21 @@ button, a, input, select, textarea {
   --crepe-color-hover: var(--nh-bg-sunken);
   --crepe-color-selected: var(--nh-accent-subtle);
   --crepe-color-inline-area: var(--nh-bg-sunken);
+  /* The floating chrome (slash menu, selection toolbar, link/latex tooltips, table &
+     code-block controls, image-block menu) lives inside `.milkdown`, so it inherits these
+     custom properties. Crepe's classic.css only defines the rest on bare `.milkdown` with
+     LIGHT values — so without these they'd stay light in dark mode. Mapping them to dark-aware
+     `--nh-*` tokens makes the whole WYSIWYG chrome follow the app theme in both modes:
+     secondary = code-block tool buttons; inverse/on-inverse = image-block menu; inline-code =
+     inline `code` text; shadow-1/2 = the elevation on every floating menu (a black light-shadow
+     is nearly invisible on a dark surface, so the menus lost their separation in dark mode). */
+  --crepe-color-secondary: var(--nh-bg-sunken);
+  --crepe-color-on-secondary: var(--nh-text-secondary);
+  --crepe-color-inverse: var(--nh-text);
+  --crepe-color-on-inverse: var(--nh-bg);
+  --crepe-color-inline-code: var(--nh-accent);
+  --crepe-shadow-1: var(--nh-shadow-md);
+  --crepe-shadow-2: var(--nh-shadow-lg);
   --crepe-font-default: "DM Sans", sans-serif;
   --crepe-font-title: "DM Sans", sans-serif;
   --crepe-font-code: "JetBrains Mono", ui-monospace, monospace;

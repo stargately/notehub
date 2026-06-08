@@ -143,6 +143,28 @@ diagrams and tables render inline, and `Cmd+/` toggles to the raw markdown code 
 auto-saved to the file; the frontmatter (if any) is preserved verbatim. This makes NoteHub a
 comfortable editor for notes, READMEs, and docs — not just task lists.
 
+### What the WYSIWYG editor can do
+
+The formatted editor (used by both the Q&A and plain-markdown views) is a full Typora-style
+rich-text surface — not just bold/italic. Everything below works as you type and round-trips to
+plain markdown on save:
+
+- **Slash menu** — type `/` on an empty line for a block picker (headings, lists, quote, code, table,
+  divider, image, math).
+- **Selection toolbar** — select text to get a floating toolbar (bold, italic, strikethrough, code,
+  link).
+- **Block drag handle** — hover the left gutter for a `⠿` handle to drag a block or open its menu.
+- **Math (KaTeX)** — inline `$x^2$` and block `$$…$$` render as typeset math.
+- **Task lists** — `- [ ]` / `- [x]` become clickable checkboxes.
+- **Tables** — full editing with row/column add-remove and per-column alignment.
+- **Code blocks** — fenced code with syntax highlighting and a language picker.
+- **Links** — a tooltip to open, edit, copy, or remove a link.
+- **Mermaid diagrams** — ` ```mermaid ` fences render live (click to edit the source inline).
+
+All of this chrome follows the app theme — slash menu, toolbars, and tooltips are themed for both
+light and dark mode. The same rich editing (including task-list checkboxes) is available in the task
+detail drawer's description field.
+
 ## Custom Fields
 
 Any field added to `columns` in frontmatter automatically appears as a column. By default, custom fields render as plain text. Use the `type` property to get richer rendering:

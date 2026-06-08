@@ -74,8 +74,8 @@ notehub/
 | Desktop | Tauri 2.2, Rust 2021 edition |
 | Frontend | React 18, TypeScript 5.6, Vite 6 |
 | Data Grid | AG Grid Community 33 |
-| Rich Text | Tiptap 2.11 (StarterKit, Placeholder, TaskList) |
-| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa` and plain markdown files) |
+| Rich Text | Tiptap 2.11 (StarterKit + Placeholder + TaskList/TaskItem) — task-drawer description editor |
+| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa` and plain markdown files). Crepe's default features are all on: slash menu + block drag handle (`BlockEdit`), selection toolbar (`Toolbar`), inline/block KaTeX math (`Latex`), task-list checkboxes (`ListItem`), full table editing (`Table`), syntax-highlighted code blocks (`CodeMirror`), link tooltip (`LinkTooltip`). NoteHub only overrides `Cursor` (`virtual: false`) + `Placeholder`. |
 | Diagrams | Mermaid 10 via `@milkdown/plugin-diagram` (custom node view) |
 | Code Editor | Monaco (`@monaco-editor/react`) for raw markdown |
 | Styling | Tailwind CSS 3.4, `@tailwindcss/typography` |
@@ -333,6 +333,17 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
 - **Browser fallback**: runs without Tauri using `sample-project.md` for UI testing.
 - **Dark mode**: class-based (`dark`), AG Grid + Tailwind themed. The **theme cycle** (light → dark →
   system) lives in the status bar.
+- **WYSIWYG chrome theming** (`globals.css` `.nh-qa-doc .milkdown`): Crepe's `classic.css` defines
+  its `--crepe-color-*`/`--crepe-shadow-*` palette on bare `.milkdown` with **light** values only.
+  All of Crepe's floating chrome (slash menu, selection toolbar, link/latex tooltips, table &
+  code-block controls, image-block menu) is mounted **inside** `.milkdown`, so it inherits whatever
+  custom properties that element carries. NoteHub remaps the full consumed set to dark-aware `--nh-*`
+  tokens in one two-class-deep block — so the chrome follows the app theme in **both** modes without
+  importing `classic-dark.css` (which would just redefine the same `.milkdown` vars and can't be
+  scoped per-theme). The non-obvious ones beyond the content palette: `secondary` (code-block tool
+  buttons), `inverse`/`on-inverse` (image-block menu), `inline-code` (inline `code` text → accent),
+  and **`shadow-1`/`shadow-2`** — a black light-shadow is nearly invisible on a dark surface, so the
+  borderless floating menus lost their elevation in dark mode until mapped to `--nh-shadow-md/lg`.
 - **Status bar**: Zed-style thin bottom bar with the window's layout toggles (sidebar/terminal) +
   theme cycle. See `src/components/CLAUDE.md`.
 

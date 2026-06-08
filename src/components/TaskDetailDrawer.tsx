@@ -2,6 +2,8 @@ import { useEffect, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
 import { useKeymapAction } from "../lib/keymap/provider";
 import { ACTIONS } from "../lib/keymap/actions";
 import { registerPmView, pasteAsPlainText, type PmInsertView } from "../lib/pm-plain-paste";
@@ -27,6 +29,10 @@ export function TaskDetailDrawer({
     extensions: [
       StarterKit,
       Placeholder.configure({ placeholder: "Add a description..." }),
+      // Render `- [ ]` / `- [x]` as interactive checkboxes (StarterKit ships bullet/ordered
+      // lists but not task lists). Styled via `.tiptap-editor ul[data-type="taskList"]`.
+      TaskList,
+      TaskItem.configure({ nested: true }),
     ],
     content: task.description || "",
     onUpdate: ({ editor }) => {
