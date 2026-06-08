@@ -37,9 +37,16 @@ function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode
     const crepe = new Crepe({
       root,
       defaultValue: value,
-      featureConfigs: placeholder
-        ? { [Crepe.Feature.Placeholder]: { text: placeholder } }
-        : undefined,
+      featureConfigs: {
+        // Use the browser's native caret instead of Crepe's virtual cursor. The virtual
+        // cursor renders a widget decoration for ANY editor whose selection is empty — not
+        // just the focused one — so with QaLayout's many mounted cells every cell drew its
+        // own cursor (multiple cursors at once, only the focused one blinking). The native
+        // caret only appears in the focused contenteditable and blinks on its own, giving
+        // exactly one blinking cursor globally. (Drop/gap cursors stay enabled.)
+        [Crepe.Feature.Cursor]: { virtual: false },
+        ...(placeholder ? { [Crepe.Feature.Placeholder]: { text: placeholder } } : {}),
+      },
     });
 
     // Render ```mermaid fences as diagrams. `diagram` adds the schema + remark parsing;

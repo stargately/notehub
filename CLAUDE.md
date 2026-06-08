@@ -322,6 +322,14 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
   `useKeymapAction(…, active)` so only the active tab claims the binding. The edit flows through the
   editors' normal `markdownUpdated`/`onUpdate` → save path (no special-casing in `useFileSync`).
   Tests: `src/lib/__tests__/pm-plain-paste.test.ts` (focus routing, sync capture, empty/rejected clipboard).
+- **Single blinking caret** (`MarkdownWysiwyg`): Crepe's `Cursor` feature is configured with
+  `{ virtual: false }` so the Milkdown editors use the **browser-native caret**, not the
+  `prosemirror-virtual-cursor` widget. The virtual cursor draws a decoration for *any* editor whose
+  selection is empty (not just the focused one), so with `QaLayout`'s many mount-once cells every cell
+  rendered its own static cursor — multiple cursors at once, only the focused one blinking. The native
+  caret appears only in the focused `contenteditable` and blinks on its own, so exactly one blinking
+  caret exists globally; `caret-color: var(--nh-accent)` (`globals.css`) tints it. Crepe's drop/gap
+  cursors stay enabled (only the virtual *text* cursor is dropped).
 - **Browser fallback**: runs without Tauri using `sample-project.md` for UI testing.
 - **Dark mode**: class-based (`dark`), AG Grid + Tailwind themed. The **theme cycle** (light → dark →
   system) lives in the status bar.

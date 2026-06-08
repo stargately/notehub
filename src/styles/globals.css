@@ -511,8 +511,6 @@ button, a, input, select, textarea {
   --crepe-color-hover: var(--nh-bg-sunken);
   --crepe-color-selected: var(--nh-accent-subtle);
   --crepe-color-inline-area: var(--nh-bg-sunken);
-  /* Caret colors default to --crepe-color-outline (faint); use the accent so it's visible. */
-  --prosemirror-virtual-cursor-color: var(--nh-accent);
   --crepe-font-default: "DM Sans", sans-serif;
   --crepe-font-title: "DM Sans", sans-serif;
   --crepe-font-code: "JetBrains Mono", ui-monospace, monospace;
