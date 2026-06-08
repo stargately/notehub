@@ -258,13 +258,16 @@ is always authoritative:
 
 - **You're not editing → the file updates live.** When something else writes the file,
   NoteHub reloads it instantly so you can watch the changes appear.
-- **You're mid-edit when the file also changes on disk → NoteHub asks.** A
-  *"File changed on disk"* dialog lets you **Keep disk** (take the external version) or
-  **Keep mine** (overwrite it with your version). Your work is never silently discarded,
-  and NoteHub never silently overwrites an external change.
+- **You have genuinely diverging unsaved edits when the file also changes on disk →
+  NoteHub asks.** A *"File changed on disk"* dialog lets you **Keep disk** (take the
+  external version) or **Keep mine** (overwrite it with your version). Your work is never
+  silently discarded, and NoteHub never silently overwrites an external change.
 
-Your own edits autosave (300ms debounce) and never trigger a false "changed on disk"
-prompt.
+The prompt is **content-truthful**: it only appears when your in-memory version actually
+differs from *both* the last-synced version *and* the new version on disk. If the other
+tool just wrote the same content you already have — or your editor re-saved the file
+unchanged — NoteHub reconciles silently instead of nagging you. Your own edits autosave
+(300ms debounce) and never trigger a false "changed on disk" prompt.
 
 ## Keyboard Shortcuts
 

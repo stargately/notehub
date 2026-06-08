@@ -21,7 +21,9 @@ import type { FileSync } from "../useFileSync";
 const guardedWriteMock = vi.fn(async (_p: string, _c: string) => true);
 const sync = {
   markLoaded: vi.fn(),
-  markDirty: vi.fn(),
+  // Real markDirty returns whether the buffer is genuinely dirty; these edits always differ from
+  // the loaded content, so it's true (and the caller schedules the write).
+  markDirty: vi.fn(() => true),
   guardedWrite: (p: string, c: string) => guardedWriteMock(p, c),
   reconcile: vi.fn(),
   conflict: null,

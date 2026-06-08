@@ -69,6 +69,67 @@ describe("useFileSync reconciliation", () => {
     expect(result.current.conflict).toEqual({ path: PATH, disk: "EXTERNAL", mine: "MINE" });
   });
 
+  it("does not conflict when the in-memory buffer already equals the new disk content", async () => {
+    // Convergence: the user has a pending edit, and Claude independently wrote the same bytes.
+    diskContent = "A";
+    const { result } = renderHook(() => useFileSync());
+    act(() => result.current.markLoaded(PATH, "A"));
+    act(() => result.current.markDirty(PATH)); // dirty, no content
+
+    diskContent = "SAME";
+    const applyReload = vi.fn();
+    await act(async () => {
+      await result.current.reconcile(PATH, "SAME", applyReload);
+    });
+    expect(result.current.conflict).toBeNull();
+    expect(applyReload).not.toHaveBeenCalled(); // editor already shows it — no remount needed
+
+    // Baseline was adopted + dirty cleared, so a later watcher tick is a no-op echo.
+    diskContent = "SAME";
+    await act(async () => {
+      await result.current.reconcile(PATH, "SAME", applyReload);
+    });
+    expect(applyReload).not.toHaveBeenCalled();
+    expect(result.current.conflict).toBeNull();
+  });
+
+  it("content-aware markDirty: a baseline re-emit stays clean and reports not-dirty", async () => {
+    // A WYSIWYG re-emit of the on-disk bytes (content === baseline) is not a real edit: markDirty
+    // returns false (so the caller cancels its pending write) and a following external change
+    // live-reloads cleanly instead of raising a conflict.
+    diskContent = "A";
+    const { result } = renderHook(() => useFileSync());
+    act(() => result.current.markLoaded(PATH, "A"));
+    let dirty: boolean | undefined;
+    act(() => { dirty = result.current.markDirty(PATH, "A"); }); // re-emit of the baseline
+    expect(dirty).toBe(false);
+
+    diskContent = "EXTERNAL";
+    const applyReload = vi.fn();
+    await act(async () => {
+      await result.current.reconcile(PATH, "A", applyReload);
+    });
+    expect(applyReload).toHaveBeenCalledTimes(1);
+    expect(result.current.conflict).toBeNull();
+  });
+
+  it("content-aware markDirty: a genuine edit reports dirty and still conflicts", async () => {
+    diskContent = "A";
+    const { result } = renderHook(() => useFileSync());
+    act(() => result.current.markLoaded(PATH, "A"));
+    let dirty: boolean | undefined;
+    act(() => { dirty = result.current.markDirty(PATH, "MINE"); }); // real edit (differs from baseline)
+    expect(dirty).toBe(true);
+
+    diskContent = "EXTERNAL";
+    const applyReload = vi.fn();
+    await act(async () => {
+      await result.current.reconcile(PATH, "MINE", applyReload);
+    });
+    expect(applyReload).not.toHaveBeenCalled();
+    expect(result.current.conflict).toEqual({ path: PATH, disk: "EXTERNAL", mine: "MINE" });
+  });
+
   it("guardedWrite refuses to clobber an external change and raises a conflict", async () => {
     diskContent = "A";
     const { result } = renderHook(() => useFileSync());

@@ -51,8 +51,15 @@ export function useRawFile(filePath: string, sync: FileSync) {
       // tab-switch the editor still shows the previous file) — writing now would drift.
       if (loadedPathRef.current !== filePath) return;
       setContent(next);
-      sync.markDirty(filePath);
-      if (saveTimer.current) clearTimeout(saveTimer.current);
+      // Pass `next` so an editor re-emit of the on-disk bytes isn't treated as a real edit. When
+      // it isn't a real edit, cancel any pending write and skip scheduling — a stale write that
+      // survives a clean live-reload could otherwise clobber an external change.
+      const dirty = sync.markDirty(filePath, next);
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      if (!dirty) return;
       saveTimer.current = setTimeout(async () => {
         try {
           await sync.guardedWrite(filePath, next);

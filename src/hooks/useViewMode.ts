@@ -103,11 +103,19 @@ export function useViewMode({
       if (activeFilePath && !synced) return;
       setEditorContent(content);
       if (!activeFilePath) return;
-      syncRef.current?.markDirty(activeFilePath);
-      if (editorSaveTimeoutRef.current) clearTimeout(editorSaveTimeoutRef.current);
+      // Pass `content` so a WYSIWYG re-emit of the on-disk bytes doesn't flag the buffer dirty
+      // (which would make the next external write raise a spurious conflict). When it isn't a real
+      // edit, also cancel any pending write and don't schedule a new one — a stale write surviving
+      // a clean live-reload could otherwise clobber an external change.
+      const s = syncRef.current;
+      const dirty = s ? s.markDirty(activeFilePath, content) : true;
+      if (editorSaveTimeoutRef.current) {
+        clearTimeout(editorSaveTimeoutRef.current);
+        editorSaveTimeoutRef.current = null;
+      }
+      if (!dirty) return;
       editorSaveTimeoutRef.current = setTimeout(async () => {
         try {
-          const s = syncRef.current;
           if (s) await s.guardedWrite(activeFilePath, content);
           else await writeFile(activeFilePath, content);
         } catch {
