@@ -84,28 +84,30 @@ export function TabBar({
               />
             )}
             <span className="truncate max-w-[150px] font-medium">{tab.label}</span>
-            {tabs.length > 1 && (
-              <button
-                className="ml-1 p-0.5 rounded transition-colors"
-                style={{ color: "var(--nh-text-tertiary)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--nh-border)";
-                  e.currentTarget.style.color = "var(--nh-text)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--nh-text-tertiary)";
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseTab(tab.id);
-                }}
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
+            {/* Every tab gets a close button — including the last one, which falls back to the
+                empty pane (matching Cmd+W). No tab is unclosable from the mouse. */}
+            <button
+              className="ml-1 p-0.5 rounded transition-colors"
+              aria-label={`Close ${tab.label}`}
+              title="Close"
+              style={{ color: "var(--nh-text-tertiary)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--nh-border)";
+                e.currentTarget.style.color = "var(--nh-text)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "var(--nh-text-tertiary)";
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onCloseTab(tab.id);
+              }}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
         );
       })}
