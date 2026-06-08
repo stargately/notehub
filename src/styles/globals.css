@@ -338,6 +338,39 @@ button, a, input, select, textarea {
   animation: fadeIn 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ─── Welcome pane (Zed-style empty state — no tabs open) ─── */
+.nh-welcome-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--nh-radius);
+  font-size: 13px;
+  text-align: left;
+  color: var(--nh-text-secondary);
+  transition: background var(--nh-transition), color var(--nh-transition);
+}
+.nh-welcome-row:hover {
+  background: var(--nh-bg-sunken);
+  color: var(--nh-text);
+}
+.nh-kbd {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--nh-text-tertiary);
+  background: var(--nh-bg-sunken);
+  border: 1px solid var(--nh-border-subtle);
+}
+.nh-welcome-row:hover .nh-kbd {
+  color: var(--nh-text-secondary);
+}
+
 /* ─── QA layout (layout: qa) ─── */
 .nh-qa-doc {
   background: var(--nh-bg);

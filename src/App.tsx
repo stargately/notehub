@@ -19,6 +19,7 @@ import type { FileTreeHandle } from "./components/FileTree";
 import { QuickOpen } from "./components/QuickOpen";
 import { KeybindingsHelp } from "./components/KeybindingsHelp";
 import { DocumentView, type DocCommands } from "./components/DocumentView";
+import { WelcomePane } from "./components/WelcomePane";
 import { Toaster } from "sonner";
 
 function App() {
@@ -114,7 +115,7 @@ function App() {
     setTerminalMounted(true);
   }, []);
 
-  // Cmd+W (Zed/VS Code style): close the active tab; once the last tab is gone (welcome state),
+  // Cmd+W (Zed/VS Code style): close the active tab; once the last tab is gone (empty pane),
   // a further Cmd+W closes the window. Shared by the keymap action and the native File → Close item.
   const closeActiveTabOrWindow = useCallback(() => {
     if (activeTabId) handleCloseTab(activeTabId);
@@ -214,23 +215,15 @@ function App() {
           )}
 
           {tabs.length === 0 ? (
-            // No open tabs — no auto-created untitled doc. The sidebar tree and File menu stay
-            // available to open or create a file.
-            <div className="flex-1 flex items-center justify-center nh-fade-in">
-              <div className="text-center">
-                <div className="w-10 h-10 rounded-xl mx-auto mb-4 flex items-center justify-center" style={{ background: "var(--nh-accent-subtle)" }}>
-                  <svg className="w-5 h-5" style={{ color: "var(--nh-accent)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <h2 className="text-base font-semibold mb-1" style={{ color: "var(--nh-text)" }}>
-                  Welcome to NoteHub
-                </h2>
-                <p className="text-sm" style={{ color: "var(--nh-text-secondary)" }}>
-                  Create or open a file from the sidebar or the File menu to get started.
-                </p>
-              </div>
-            </div>
+            // No open tabs — no auto-created untitled doc. A Zed-style empty pane of key actions
+            // sits on the blank editor background; the sidebar tree + File menu stay available too.
+            <WelcomePane
+              hasWorkspace={!!workspaceRoot}
+              onNewFile={() => triggerNew("file")}
+              onOpenFile={() => void handleAddTab()}
+              onQuickOpen={() => setQuickOpenOpen(true)}
+              onOpenFolder={openFolder}
+            />
           ) : (
             // One mounted DocumentView per (viewed) tab; only the active one is visible. Each owns
             // its own buffer + path + autosave, so one tab can never write onto another's file.

@@ -338,7 +338,7 @@ remap anything via **File → Keyboard Shortcuts…** (`KeybindingsHelp.tsx`). D
   `.md` file name (no dir/ext), so "Save as PDF" defaults to a consistent name. Handler in `QaLayout.tsx`.
 - `Cmd+B` — Toggle the workspace file-tree sidebar
 - `Cmd+1-9` — Switch tabs (`workspace::ActivateTab` with the index as the action arg)
-- `Cmd+W` — Close the active tab (`workspace::CloseTab`); with no tabs open (welcome state) it
+- `Cmd+W` — Close the active tab (`workspace::CloseTab`); with no tabs open (empty pane) it
   closes the window, Zed/VS Code-style. It's the native File → **Close** accelerator (routed to the
   focused window as `menu:close`, handled by `App.closeActiveTabOrWindow`); the window is closed via
   the Rust `close_window` command (no `core:window` capability needed).
@@ -410,9 +410,14 @@ folder focuses the window that owns it. Opening a folder never disturbs existing
 
 **No auto-opened untitled doc**: NoteHub never creates an `untitled-todo.md` tab on its own. A main
 window with no restored session, a freshly-spawned workspace window, and a window whose last tab was
-just closed all settle into an **empty/welcome state** — `App` keeps the sidebar mounted (only the
-document area shows the welcome message), so files are created/opened from the tree or the native
-**File** menu. Closing the last tab is allowed (`activeTabId` becomes `""`). New `.md` files are
+just closed all settle into an **empty state** — `App` keeps the sidebar mounted and the document
+area renders the **Zed-style empty pane** (`WelcomePane.tsx`): a clean, minimal list of the key
+file/workspace actions (New File / Open File ⌘O / Quick Open ⌘P / Open Folder…) with their shortcuts
+(rendered from the live keymap via `formatSequence`, so a user remap shows here too), on the blank
+editor background — not a marketing card, and not editable. Workspace-only actions (New File / Quick
+Open) appear only with a folder open; rows are clickable and delegate to the same handlers as the
+sidebar/File menu. Files are still created/opened from the tree or the native **File** menu too.
+Closing the last tab is allowed (`activeTabId` becomes `""`). New `.md` files are
 created empty (plain Milkdown docs), so `getDefaultProjectContent()`'s task-board template is reached
 only when restoring an in-memory buffer for a momentarily-`null` path, never on disk.
 

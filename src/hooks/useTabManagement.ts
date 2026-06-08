@@ -177,8 +177,8 @@ export function useTabManagement(options: UseTabManagementOptions = {}) {
       setTabs((prev) => {
         const idx = prev.findIndex((t) => t.id === id);
         const next = prev.filter((t) => t.id !== id);
-        // Closing the last tab is allowed — it falls back to the welcome/empty state (no auto
-        // untitled doc); the sidebar + File menu remain available to open or create files.
+        // Closing the last tab is allowed — it falls back to the empty pane (no auto untitled
+        // doc); the sidebar + File menu remain available to open or create files.
         if (id === activeTabId) {
           setActiveTabId(next.length === 0 ? "" : next[Math.min(idx, next.length - 1)].id);
         }
