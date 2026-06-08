@@ -338,6 +338,10 @@ remap anything via **File → Keyboard Shortcuts…** (`KeybindingsHelp.tsx`). D
   `.md` file name (no dir/ext), so "Save as PDF" defaults to a consistent name. Handler in `QaLayout.tsx`.
 - `Cmd+B` — Toggle the workspace file-tree sidebar
 - `Cmd+1-9` — Switch tabs (`workspace::ActivateTab` with the index as the action arg)
+- `Cmd+W` — Close the active tab (`workspace::CloseTab`); with no tabs open (welcome state) it
+  closes the window, Zed/VS Code-style. It's the native File → **Close** accelerator (routed to the
+  focused window as `menu:close`, handled by `App.closeActiveTabOrWindow`); the window is closed via
+  the Rust `close_window` command (no `core:window` capability needed).
 - `Ctrl+`` `` — Toggle terminal
 - `Cmd+D` — Split the active terminal pane side-by-side (Terminal context — only when focused)
 - `Escape` — Close detail drawer / modals (component-local, not keymap-routed)
@@ -366,7 +370,7 @@ A small Zed-inspired engine, split into pure (unit-tested) modules + a React lay
   `useKeymapAction(name, handler, enabled = true)` (focused/last wins via a stack; `enabled = false`
   skips registration), `useKeymapContext(name, active)`, `useKeymapApi()`. Decoupling key→action
   (keymap) from action→handler (registry) is the Zed model — `App` owns workspace actions (quick-open,
-  open, sidebar/terminal toggles, tab switching) and delegates per-document actions
+  open, sidebar/terminal toggles, tab switching, close-tab) and delegates per-document actions
   (save/reload/toggle-raw/undo/redo) to the active tab's `DocCommands`. Since **every tab's
   `DocumentView` stays mounted**, views register only when active: `DocumentView` contributes the
   Grid/Editor/QA/RawFile contexts gated on `active`, and `Toolbar` (`focusFilter`/`newTask`) +
@@ -478,11 +482,14 @@ watched recursively so every tree file live-reloads on external edits.
     delete isn't undone by a debounced write recreating the file.
   - **Native File menu** (`src-tauri/src/menu.rs` + `src/hooks/useNativeMenu.ts`): the macOS **File**
     submenu (New File/Folder, Open File… `⌘O`, Open Folder…, Quick Open… `⌘P`, Save `⌘S`, Refresh File
-    Tree, Close Window `⌘W`, Keyboard Shortcuts…) — no in-window menu bar. `menu::build_app_menu` starts
+    Tree, Close `⌘W`, Keyboard Shortcuts…) — no in-window menu bar. `menu::build_app_menu` starts
     from `Menu::default` (keeping native App/**Edit**/Window menus) and swaps the stock File submenu (index
-    1) for ours. `handle_menu_event` emits `menu:<action>` to the **focused** window; `useNativeMenu`
-    (in every window) listens and calls the matching handlers. `⌘O`/`⌘P`/`⌘S` are real OS accelerators
-    (supersede the keymap's `mod-o/p/s` but route to the same handlers). Enabled state is focus-synced:
+    1) for ours. The stock predefined Close Window is replaced by a custom **Close** item (`⌘W`) emitting
+    `menu:close`, so a single accelerator closes the active tab and only closes the window once no tabs
+    remain (Zed/VS Code-style — see `App.closeActiveTabOrWindow` + the `close_window` command).
+    `handle_menu_event` emits `menu:<action>` to the **focused** window; `useNativeMenu`
+    (in every window) listens and calls the matching handlers. `⌘O`/`⌘P`/`⌘S`/`⌘W` are real OS accelerators
+    (supersede the keymap's `mod-o/p/s/w` but route to the same handlers). Enabled state is focus-synced:
     `useNativeMenu` pushes `(hasWorkspace, canSave)` via `update_file_menu` on focus/state change,
     toggling the `FileMenuItems` in `AppState.file_menu` (Save off with no doc; New File/Folder/Refresh
     off without a workspace).

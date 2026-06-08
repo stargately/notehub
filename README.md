@@ -212,8 +212,9 @@ panel toggles as a quick reminder of where you are.
 
 NoteHub uses the **native OS menu bar** (the macOS top-of-screen menu, Zed-style). Its **File** menu
 collects the common file actions: **New File**, **New Folder**, **Open File…** (`⌘O`), **Open
-Folder…**, **Quick Open…** (`⌘P`), **Save** (`⌘S`), and **Refresh File Tree** — plus the standard
-**Edit** menu (Copy/Paste/Undo/Redo) and **Close Window** (`⌘W`). Items grey out when they don't
+Folder…**, **Quick Open…** (`⌘P`), **Save** (`⌘S`), and **Refresh File Tree** — plus **Close**
+(`⌘W`), which closes the active tab and only closes the window once no tabs remain (Zed/VS Code-style),
+and the standard **Edit** menu (Copy/Paste/Undo/Redo). Items grey out when they don't
 apply (Save with no open document; New File / New Folder / Refresh until a folder is open), tracking
 whichever window is focused.
 
@@ -290,6 +291,7 @@ The defaults:
 | `Cmd+Shift+P` | Print the QA doc (compact cheatsheet, letter size) |
 | `Cmd+B` | Toggle the workspace file-tree sidebar |
 | `Cmd+1-9` | Switch tabs |
+| `Cmd+W` | Close the active tab (closes the window when no tabs remain, Zed/VS Code-style) |
 | `Ctrl+`` `` | Toggle terminal |
 | `Cmd+D` | Split the active terminal pane side-by-side |
 | `Escape` | Close detail drawer |

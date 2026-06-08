@@ -9,6 +9,7 @@ export interface NativeMenuHandlers {
   onQuickOpen: () => void;
   onSave: () => void;
   onRefresh: () => void;
+  onClose: () => void;
   onOpenKeymap: () => void;
 }
 
@@ -49,6 +50,7 @@ export function useNativeMenu(handlers: NativeMenuHandlers, state: NativeMenuSta
       await wire("menu:quick-open", (h) => h.onQuickOpen());
       await wire("menu:save", (h) => h.onSave());
       await wire("menu:refresh-tree", (h) => h.onRefresh());
+      await wire("menu:close", (h) => h.onClose());
       await wire("menu:open-keymap", (h) => h.onOpenKeymap());
     })();
     return () => {

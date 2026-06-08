@@ -205,6 +205,7 @@ pub fn run() {
             commands::detach_tab,
             commands::get_window_files,
             commands::get_window_rect,
+            commands::close_window,
             commands::update_file_menu,
             commands::print_html,
             commands::start_watching,

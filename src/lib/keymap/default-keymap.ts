@@ -21,6 +21,7 @@ export const DEFAULT_KEYMAP: Keymap = [
       "mod-r": "editor::Reload",
       "mod-s": "editor::Save",
       "mod-/": "editor::ToggleRawView",
+      "mod-w": "workspace::CloseTab",
       "mod-shift-c": "editor::CopyPath",
       "mod-1": ["workspace::ActivateTab", 0],
       "mod-2": ["workspace::ActivateTab", 1],

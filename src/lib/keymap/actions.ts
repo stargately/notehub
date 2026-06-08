@@ -9,6 +9,7 @@ export const ACTIONS = {
   toggleSidebar: "workspace::ToggleSidebar",
   toggleTerminal: "workspace::ToggleTerminal",
   activateTab: "workspace::ActivateTab", // arg: 0-based tab index
+  closeTab: "workspace::CloseTab", // close active tab; closes the window when no tabs remain
   openKeymap: "app::OpenKeymap",
 
   // editor / document

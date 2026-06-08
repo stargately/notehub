@@ -19,6 +19,7 @@ pub fn menu_event_name(id: &str) -> Option<&'static str> {
         "file::quick-open" => Some("menu:quick-open"),
         "file::save" => Some("menu:save"),
         "file::refresh-tree" => Some("menu:refresh-tree"),
+        "file::close" => Some("menu:close"),
         "file::open-keymap" => Some("menu:open-keymap"),
         _ => None,
     }
@@ -35,8 +36,9 @@ pub struct FileMenuItems {
 
 /// Build the app menu: start from the platform default (keeps App/Edit/View/Window/Help) and swap
 /// the stock File submenu for ours. macOS' default already has a File submenu at index 1 (just
-/// Close Window), so we remove that index and insert ours there — re-adding Close Window so ⌘W
-/// still works. Returns the menu plus handles for the dynamically-enabled items.
+/// Close Window), so we remove that index and insert ours there — adding a "Close" item (⌘W) that
+/// the frontend routes to closing the active tab, falling through to closing the window when no
+/// tabs remain (Zed/VS Code style). Returns the menu plus handles for the dynamically-enabled items.
 pub fn build_app_menu(app: &AppHandle) -> tauri::Result<(Menu<Wry>, FileMenuItems)> {
     let new_file = MenuItem::with_id(app, "file::new-file", "New File", true, None::<&str>)?;
     let new_folder = MenuItem::with_id(app, "file::new-folder", "New Folder", true, None::<&str>)?;
@@ -64,6 +66,9 @@ pub fn build_app_menu(app: &AppHandle) -> tauri::Result<(Menu<Wry>, FileMenuItem
         true,
         None::<&str>,
     )?;
+    // ⌘W: routed to the frontend (close active tab → close window when empty), not the predefined
+    // close_window, so a single accelerator does both like Zed/VS Code.
+    let close = MenuItem::with_id(app, "file::close", "Close", true, Some("CmdOrCtrl+W"))?;
     let open_keymap = MenuItem::with_id(
         app,
         "file::open-keymap",
@@ -89,7 +94,7 @@ pub fn build_app_menu(app: &AppHandle) -> tauri::Result<(Menu<Wry>, FileMenuItem
             &PredefinedMenuItem::separator(app)?,
             &refresh,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, None)?,
+            &close,
             &PredefinedMenuItem::separator(app)?,
             &open_keymap,
         ],
@@ -159,6 +164,7 @@ mod tests {
             menu_event_name("file::refresh-tree"),
             Some("menu:refresh-tree")
         );
+        assert_eq!(menu_event_name("file::close"), Some("menu:close"));
     }
 
     #[test]

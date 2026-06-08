@@ -234,6 +234,13 @@ export async function getWindowRect(): Promise<{ x: number; y: number; width: nu
   return invoke<{ x: number; y: number; width: number; height: number }>("get_window_rect");
 }
 
+/** Close the current window (Cmd+W with no open tabs falls through to this — Zed/VS Code style). */
+export async function closeWindow(): Promise<void> {
+  if (!isTauri) return;
+  const invoke = await getInvoke();
+  await invoke<void>("close_window");
+}
+
 /** Sync the native File menu's enabled state to the focused window's workspace/tab state. */
 export async function updateFileMenu(hasWorkspace: boolean, canSave: boolean): Promise<void> {
   if (!isTauri) return;

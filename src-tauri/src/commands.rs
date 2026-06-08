@@ -329,6 +329,14 @@ pub fn get_window_rect(window: tauri::WebviewWindow) -> Result<WindowRect, Strin
     })
 }
 
+/// Close the calling window. ⌘W in the frontend closes the active tab and, when no tabs remain,
+/// falls through to here to close the window (Zed/VS Code style). Routed through Rust so no
+/// `core:window` capability is needed (matching the geometry/tear-off commands).
+#[tauri::command]
+pub fn close_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
 /// Where to place a torn-off window so its title bar lands roughly under the cursor: nudge the
 /// release point up/left a little, clamped to the visible origin. Pure for unit testing.
 fn title_bar_anchor(screen_x: f64, screen_y: f64) -> (f64, f64) {

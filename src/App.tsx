@@ -7,7 +7,7 @@ import { useKeymapAction } from "./lib/keymap/provider";
 import { ACTIONS } from "./lib/keymap/actions";
 import { useUndoHistory } from "./hooks/useUndoHistory";
 import { useAutoUpdate } from "./hooks/useAutoUpdate";
-import { isTauri, getWindowRect } from "./lib/tauri-api";
+import { isTauri, getWindowRect, closeWindow } from "./lib/tauri-api";
 import { isReleaseOutsideWindow } from "./lib/tear-off";
 import { refreshAllDirs } from "./lib/tree-refresh";
 import { TabBar } from "./components/TabBar";
@@ -114,6 +114,13 @@ function App() {
     setTerminalMounted(true);
   }, []);
 
+  // Cmd+W (Zed/VS Code style): close the active tab; once the last tab is gone (welcome state),
+  // a further Cmd+W closes the window. Shared by the keymap action and the native File → Close item.
+  const closeActiveTabOrWindow = useCallback(() => {
+    if (activeTabId) handleCloseTab(activeTabId);
+    else void closeWindow();
+  }, [activeTabId, handleCloseTab]);
+
   // ── Global (workspace-level) keymap actions. Per-doc actions delegate to the active tab. ──
   useKeymapAction(ACTIONS.quickOpen, () => setQuickOpenOpen(true));
   useKeymapAction(ACTIONS.openFile, () => void handleAddTab());
@@ -126,6 +133,7 @@ function App() {
     const idx = typeof arg === "number" ? arg : 0;
     if (idx >= 0 && idx < tabs.length) setActiveTabId(tabs[idx].id);
   });
+  useKeymapAction(ACTIONS.closeTab, closeActiveTabOrWindow);
   useKeymapAction(ACTIONS.openKeymap, () => setKeymapHelpOpen(true));
   useKeymapAction(ACTIONS.reload, () => runActive((c) => c.reload()));
   useKeymapAction(ACTIONS.save, () => runActive((c) => c.save()));
@@ -144,6 +152,7 @@ function App() {
       onQuickOpen: () => setQuickOpenOpen(true),
       onSave: () => runActive((c) => c.save()),
       onRefresh: refreshAllDirs,
+      onClose: closeActiveTabOrWindow,
       onOpenKeymap: () => setKeymapHelpOpen(true),
     },
     { hasWorkspace: !!workspaceRoot, canSave: tabs.length > 0 },

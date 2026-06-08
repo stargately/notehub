@@ -43,6 +43,7 @@ const makeHandlers = () => ({
   onQuickOpen: vi.fn(),
   onSave: vi.fn(),
   onRefresh: vi.fn(),
+  onClose: vi.fn(),
   onOpenKeymap: vi.fn(),
 });
 
@@ -66,6 +67,7 @@ const EVENT_TO_HANDLER: Array<[string, keyof NativeMenuHandlers]> = [
   ["menu:quick-open", "onQuickOpen"],
   ["menu:save", "onSave"],
   ["menu:refresh-tree", "onRefresh"],
+  ["menu:close", "onClose"],
   ["menu:open-keymap", "onOpenKeymap"],
 ];
 
