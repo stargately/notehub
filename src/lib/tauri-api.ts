@@ -333,6 +333,21 @@ export async function writeFile(path: string, content: string): Promise<void> {
   await invoke<void>("write_file", { path, content });
 }
 
+/**
+ * Persist image `bytes` into a sibling `assets/` folder next to `docPath` and return the path
+ * **relative to the doc's directory** (e.g. `assets/pasted-image.png`) for use as a portable
+ * markdown `![](…)` src. The backend picks a non-clobbering name. Bytes are sent as a plain number
+ * array (serde `Vec<u8>`), which round-trips reliably for the moderate sizes of pasted images.
+ */
+export async function saveAsset(
+  docPath: string,
+  fileName: string,
+  bytes: Uint8Array,
+): Promise<string> {
+  const invoke = await getInvoke();
+  return invoke<string>("save_asset", { docPath, fileName, bytes: Array.from(bytes) });
+}
+
 // Terminal API
 
 export async function spawnTerminal(cwd?: string): Promise<number> {

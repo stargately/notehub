@@ -34,6 +34,8 @@ interface QaLayoutProps {
   darkMode: boolean;
   /** Base file name (no dir, no `.md`) — the document title + print/PDF title. */
   fileName?: string;
+  /** Full path of this doc (null = untitled) — threaded to the editors to resolve/anchor images. */
+  filePath?: string | null;
   /**
    * "qa" → two-column Q&A doc (`layout: qa`). "plain" → a normal markdown file with
    * no layout: it has no `**>>>**` markers, so it renders as one full-width editor.
@@ -89,6 +91,8 @@ interface QaCellProps {
   value: string;
   darkMode: boolean;
   placeholder: string;
+  /** Doc path forwarded to the editor for image resolution/anchoring (stable string → memo-safe). */
+  filePath?: string | null;
   /** Stable edit handler keyed by `field`; QaCell binds it so its `onChange` identity is stable. */
   onEdit: (field: string, value: string) => void;
 }
@@ -98,11 +102,11 @@ interface QaCellProps {
  * editing one cell doesn't reconcile the others — each `QaLayout` re-render only touches the cell
  * whose `value` actually changed (and Milkdown is mount-once, so even that is a cheap no-op render).
  */
-const QaCell = memo(function QaCell({ field, className, value, darkMode, placeholder, onEdit }: QaCellProps) {
+const QaCell = memo(function QaCell({ field, className, value, darkMode, placeholder, filePath, onEdit }: QaCellProps) {
   const handleChange = useCallback((v: string) => onEdit(field, v), [onEdit, field]);
   return (
     <div className={className} data-qa-field={field}>
-      <MarkdownWysiwyg value={value} onChange={handleChange} darkMode={darkMode} placeholder={placeholder} />
+      <MarkdownWysiwyg value={value} onChange={handleChange} darkMode={darkMode} placeholder={placeholder} filePath={filePath} />
     </div>
   );
 });
@@ -113,7 +117,7 @@ const QaCell = memo(function QaCell({ field, className, value, darkMode, placeho
  * two-column row (question | answer). Edits round-trip back to raw markdown.
  */
 export function QaLayout({
-  content, onChange, onToggleEditor, darkMode, fileName,
+  content, onChange, onToggleEditor, darkMode, fileName, filePath,
   variant = "qa", active = true, scrollRef,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
@@ -362,6 +366,7 @@ export function QaLayout({
             value={doc.header}
             darkMode={darkMode}
             placeholder="Write here…"
+            filePath={filePath}
             onEdit={onEdit}
           />
         )}
@@ -376,6 +381,7 @@ export function QaLayout({
                 value={block.left}
                 darkMode={darkMode}
                 placeholder="Question…"
+                filePath={filePath}
                 onEdit={onEdit}
               />
               <QaCell
@@ -385,6 +391,7 @@ export function QaLayout({
                 value={block.right}
                 darkMode={darkMode}
                 placeholder="Answer…"
+                filePath={filePath}
                 onEdit={onEdit}
               />
             </div>
@@ -396,6 +403,7 @@ export function QaLayout({
                 value={block.after}
                 darkMode={darkMode}
                 placeholder="Notes…"
+                filePath={filePath}
                 onEdit={onEdit}
               />
             )}

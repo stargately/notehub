@@ -614,3 +614,9 @@ button, a, input, select, textarea {
   color: var(--nh-text-secondary);
   white-space: pre-wrap;
 }
+
+/* Busy cue while a pasted/dropped image is being written to disk (milkdown-image-paste.ts).
+   The local write is fast, so a wait cursor is enough — no placeholder node needed. */
+.nh-image-uploading {
+  cursor: progress;
+}

@@ -431,6 +431,88 @@ pub async fn write_file(path: String, content: String) -> Result<(), String> {
     write_atomic(Path::new(&path), content.as_bytes())
 }
 
+/// Folder (relative to a document) where pasted/dropped images are written. A sibling `assets/`
+/// keeps the `![](assets/…)` link portable: move the doc + folder together and it still resolves.
+const ASSETS_DIR: &str = "assets";
+
+/// Sanitize a clipboard/drag file name into a safe basename (keeping its extension): drop any
+/// directory part, replace characters outside `[A-Za-z0-9._-]` with `-`, and trim stray dashes.
+/// Falls back to `image.png` when nothing usable remains. Pure → unit-tested.
+fn sanitize_asset_name(name: &str) -> String {
+    let base = Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    let cleaned: String = base
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim_matches('-');
+    if trimmed.is_empty() {
+        "image.png".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+/// A file name not already present in `existing`: `name` as-is when free, otherwise `stem-1.ext`,
+/// `stem-2.ext`, … so a second `pasted-image.png` becomes `pasted-image-1.png`. Pure (no IO) so the
+/// de-dup logic is unit-tested — the repo "extract a pure helper, then test it" pattern.
+fn unique_asset_name(existing: &std::collections::HashSet<String>, name: &str) -> String {
+    if !existing.contains(name) {
+        return name.to_string();
+    }
+    let p = Path::new(name);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or(name);
+    let ext = p.extension().and_then(|e| e.to_str());
+    let mut i = 1;
+    loop {
+        let candidate = match ext {
+            Some(e) => format!("{stem}-{i}.{e}"),
+            None => format!("{stem}-{i}"),
+        };
+        if !existing.contains(&candidate) {
+            return candidate;
+        }
+        i += 1;
+    }
+}
+
+/// Persist image `bytes` into a sibling `assets/` folder next to `doc_path`, choosing a
+/// non-clobbering name, and return the path **relative to the document's directory** (forward
+/// slashes, e.g. `assets/pasted-image.png`) for a portable markdown `![](…)` link. The caller must
+/// pass a saved document path (untitled docs have no directory to anchor relative assets to).
+#[tauri::command]
+pub async fn save_asset(
+    doc_path: String,
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    let dir = Path::new(&doc_path)
+        .parent()
+        .ok_or_else(|| "Document has no parent directory".to_string())?;
+    let assets_dir = dir.join(ASSETS_DIR);
+    fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets dir: {}", e))?;
+
+    // Snapshot existing names so the chosen name never clobbers a file already in the folder.
+    let mut existing = std::collections::HashSet::new();
+    if let Ok(rd) = fs::read_dir(&assets_dir) {
+        for entry in rd.flatten() {
+            existing.insert(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+
+    let name = unique_asset_name(&existing, &sanitize_asset_name(&file_name));
+    write_atomic(&assets_dir.join(&name), &bytes)?;
+    Ok(format!("{}/{}", ASSETS_DIR, name))
+}
+
 /// Validate a single user-typed path *component* (a file or folder name). Rejects empty/whitespace,
 /// `.`/`..`, and any path separator or NUL — so a create/rename can never traverse out of its
 /// parent directory. Pure → unit-tested.
@@ -613,10 +695,11 @@ mod tests {
     use super::{
         canonicalize, create_dir, create_file, drain_window_files, find_window_for_workspace,
         is_directory, is_noise_dir, is_valid_filename, looks_binary, print_basename, read_dir,
-        read_file, read_text_file, rel_path, rename_path, sort_dir_entries, title_bar_anchor,
-        walk_files, write_file, DirEntryInfo,
+        read_file, read_text_file, rel_path, rename_path, sanitize_asset_name, save_asset,
+        sort_dir_entries, title_bar_anchor, unique_asset_name, walk_files, write_file,
+        DirEntryInfo,
     };
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::path::Path;
 
     #[test]
@@ -961,5 +1044,84 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.contains("already exists"), "got: {err}");
+    }
+
+    #[test]
+    fn sanitize_asset_name_keeps_safe_names_and_extension() {
+        assert_eq!(sanitize_asset_name("diagram.png"), "diagram.png");
+        assert_eq!(sanitize_asset_name("My Photo (1).JPG"), "My-Photo--1-.JPG");
+        // Directory parts are stripped — a name can never traverse out of the assets dir.
+        assert_eq!(sanitize_asset_name("../../etc/passwd"), "passwd");
+        assert_eq!(sanitize_asset_name("a/b/c.png"), "c.png");
+    }
+
+    #[test]
+    fn sanitize_asset_name_falls_back_when_empty() {
+        assert_eq!(sanitize_asset_name(""), "image.png");
+        assert_eq!(sanitize_asset_name("---"), "image.png");
+        assert_eq!(sanitize_asset_name(".."), "image.png");
+    }
+
+    #[test]
+    fn unique_asset_name_returns_name_when_free() {
+        let existing = HashSet::new();
+        assert_eq!(unique_asset_name(&existing, "a.png"), "a.png");
+    }
+
+    #[test]
+    fn unique_asset_name_suffixes_on_collision() {
+        let mut existing = HashSet::new();
+        existing.insert("a.png".to_string());
+        assert_eq!(unique_asset_name(&existing, "a.png"), "a-1.png");
+
+        existing.insert("a-1.png".to_string());
+        existing.insert("a-2.png".to_string());
+        assert_eq!(unique_asset_name(&existing, "a.png"), "a-3.png");
+    }
+
+    #[test]
+    fn unique_asset_name_handles_no_extension() {
+        let mut existing = HashSet::new();
+        existing.insert("README".to_string());
+        assert_eq!(unique_asset_name(&existing, "README"), "README-1");
+    }
+
+    #[tokio::test]
+    async fn save_asset_writes_into_sibling_assets_dir_and_returns_relative_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let doc = dir.path().join("note.md");
+        std::fs::write(&doc, b"# hi").unwrap();
+
+        let rel = save_asset(
+            doc.to_str().unwrap().to_string(),
+            "pic.png".into(),
+            vec![1, 2, 3, 4],
+        )
+        .await
+        .unwrap();
+        assert_eq!(rel, "assets/pic.png");
+
+        let written = dir.path().join("assets/pic.png");
+        assert_eq!(std::fs::read(&written).unwrap(), vec![1, 2, 3, 4]);
+    }
+
+    #[tokio::test]
+    async fn save_asset_de_dups_repeated_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let doc = dir.path().join("note.md");
+        std::fs::write(&doc, b"# hi").unwrap();
+        let doc_str = doc.to_str().unwrap().to_string();
+
+        let first = save_asset(doc_str.clone(), "img.png".into(), vec![0])
+            .await
+            .unwrap();
+        let second = save_asset(doc_str, "img.png".into(), vec![0])
+            .await
+            .unwrap();
+        assert_eq!(first, "assets/img.png");
+        assert_eq!(second, "assets/img-1.png");
+        // Both files exist (the second never clobbered the first).
+        assert!(dir.path().join("assets/img.png").exists());
+        assert!(dir.path().join("assets/img-1.png").exists());
     }
 }

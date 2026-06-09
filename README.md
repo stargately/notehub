@@ -160,6 +160,25 @@ plain markdown on save:
 - **Code blocks** — fenced code with syntax highlighting and a language picker.
 - **Links** — a tooltip to open, edit, copy, or remove a link.
 - **Mermaid diagrams** — ` ```mermaid ` fences render live (click to edit the source inline).
+- **Images** — paste an image from the clipboard (`Cmd+V`) or drag-drop an image file into the
+  editor and NoteHub saves it to disk and inserts it (see below). Existing `![](…)` links render
+  inline, including **relative** links that point inside your workspace.
+
+### Images — paste & drag-drop to disk
+
+Paste a screenshot (`Cmd+V`) or drag an image file into the WYSIWYG editor and NoteHub:
+
+1. writes the image into a sibling **`assets/`** folder next to the document (a non-clobbering name
+   is chosen, e.g. `pasted-image.png`, then `pasted-image-1.png`, …), and
+2. inserts a **relative** `![](assets/pasted-image.png)` link at the cursor / drop point.
+
+Because the link is relative, the markdown stays **portable** — move the document and its `assets/`
+folder together and the image still resolves. The editor renders relative/local image links inline
+(they resolve against the document's directory); the saved markdown keeps the original relative path.
+The image upload button and "paste link" flow write to the same `assets/` folder.
+
+> An **untitled** (never-saved) document has no folder to anchor relative assets to, so save the file
+> first — until then a pasted image shows from a temporary in-memory URL that won't survive a reload.
 
 All of this chrome follows the app theme — slash menu, toolbars, and tooltips are themed for both
 light and dark mode. The same rich editing (including task-list checkboxes) is available in the task

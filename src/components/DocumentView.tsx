@@ -275,6 +275,7 @@ function DocumentViewImpl({
           darkMode={darkMode}
           scrollRef={viewScrollRef}
           fileName={deriveBaseName(filePath)}
+          filePath={filePath}
           variant={isQa ? "qa" : "plain"}
           active={active}
         />

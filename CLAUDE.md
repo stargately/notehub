@@ -51,6 +51,8 @@ notehub/
 │   │   ├── tear-off.ts        # pure predicate: was a dragged tab released outside the window?
 │   │   ├── keymap/            # Zed-style keymap: keystroke/context/matcher + provider & hooks
 │   │   ├── milkdown-mermaid.ts # Mermaid SVG node view for Milkdown
+│   │   ├── milkdown-image-paste.ts # Image paste/drop → save_asset + relative link; proxyDomURL/onUpload
+│   │   ├── image-assets.ts     # Pure helpers: resolve relative image src for display, name a pasted image
 │   │   ├── pm-plain-paste.ts   # Cmd+Shift+V "paste as plain text" for the ProseMirror editors
 │   │   ├── print.ts            # Render layout: qa to a print cheatsheet HTML
 │   │   └── tauri-api.ts        # Tauri IPC bridge
@@ -75,7 +77,7 @@ notehub/
 | Frontend | React 18, TypeScript 5.6, Vite 6 |
 | Data Grid | AG Grid Community 33 |
 | Rich Text | Tiptap 2.11 (StarterKit + Placeholder + TaskList/TaskItem) — task-drawer description editor |
-| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa` and plain markdown files). Crepe's default features are all on: slash menu + block drag handle (`BlockEdit`), selection toolbar (`Toolbar`), inline/block KaTeX math (`Latex`), task-list checkboxes (`ListItem`), full table editing (`Table`), syntax-highlighted code blocks (`CodeMirror`), link tooltip (`LinkTooltip`). NoteHub only overrides `Cursor` (`virtual: false`) + `Placeholder`. |
+| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa` and plain markdown files). Crepe's default features are all on: slash menu + block drag handle (`BlockEdit`), selection toolbar (`Toolbar`), inline/block KaTeX math (`Latex`), task-list checkboxes (`ListItem`), full table editing (`Table`), syntax-highlighted code blocks (`CodeMirror`), link tooltip (`LinkTooltip`). NoteHub overrides `Cursor` (`virtual: false`) + `Placeholder`, and configures `ImageBlock` (`proxyDomURL`/`onUpload`) for local images — see *Image paste / drag-drop to disk*. |
 | Diagrams | Mermaid 10 via `@milkdown/plugin-diagram` (custom node view) |
 | Code Editor | Monaco (`@monaco-editor/react`) for raw markdown |
 | Styling | Tailwind CSS 3.4, `@tailwindcss/typography` |
@@ -111,7 +113,7 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — tests live in adjacent `__tests__/` dirs. Coverage spans pure
   `src/lib/` modules (`markdown-parser`, `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`,
-  `tree-refresh`, `fuzzy`, `tear-off`, `recent-files`, `pm-plain-paste` + the keymap engine `keymap/__tests__/`:
+  `tree-refresh`, `fuzzy`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste` + the keymap engine `keymap/__tests__/`:
   `keystroke`/`context`/`keymap`/`user-keymap`/`provider`), the buffer/sync hooks (`useFileSync`,
   `useProjectFile`, `useViewMode`, `useRawFile`, `useTabManagement`, `useUndoHistory`, `useNativeMenu`),
   and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`). The load-bearing
@@ -129,7 +131,8 @@ npm run fmt:rust:check # cargo fmt -- --check
   `is_markdown_file`, `write_atomic` (vs a `tempfile` temp dir); `commands.rs` → `print_basename`,
   `sort_dir_entries`, `is_noise_dir`, `looks_binary`, `find_window_for_workspace`, tab-tear-off helpers
   (`drain_window_files`, `title_bar_anchor`), the gitignore index walker (`rel_path`, `walk_files`),
-  `is_valid_filename`, plus the async file commands round-tripped through a temp dir (`#[tokio::test]`);
+  `is_valid_filename`, the image-asset helpers (`unique_asset_name`, `sanitize_asset_name`) + the
+  `save_asset` write/de-dup round-trip, plus the async file commands round-tripped through a temp dir (`#[tokio::test]`);
   `menu.rs` → `menu_event_name`. When adding backend logic, extract the testable core into a pure
   function with a test next to it — keep the IO/threading shell thin.
 - **Coverage** — `npm run test:rust:coverage` (`cargo llvm-cov --summary-only`) reports line/region
@@ -330,6 +333,51 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
   caret appears only in the focused `contenteditable` and blinks on its own, so exactly one blinking
   caret exists globally; `caret-color: var(--nh-accent)` (`globals.css`) tints it. Crepe's drop/gap
   cursors stay enabled (only the virtual *text* cursor is dropped).
+- **Image paste / drag-drop to disk** (`MarkdownWysiwyg`, `src/lib/milkdown-image-paste.ts`,
+  `src/lib/image-assets.ts`, Rust `commands::save_asset`): paste (`Cmd+V`) or drag-drop an image file
+  into a Milkdown WYSIWYG editor → the bytes are written to a sibling **`assets/`** folder next to
+  the doc and a **relative** `![](assets/x.png)` is inserted. Three cooperating pieces, because Crepe
+  does **not** intercept file paste/drop on its own (its `ImageBlock` only handles the upload-button +
+  "paste link" URL flow — verified: no `handlePaste`/`handleDrop` in `@milkdown/crepe`/`components`):
+  1. **Render relative links** (`proxyDomURL`): Crepe renders `node.attrs.src` verbatim *unless*
+     `proxyDomURL` is set. `MarkdownWysiwyg` configures `featureConfigs[ImageBlock].proxyDomURL` →
+     `proxyImageUrl(src, docPath)`: a real URL (scheme/`//`) passes through, a relative/absolute fs
+     path is resolved (relative ⇒ against the **doc's dir**) and run through `convertFileSrc`
+     (`toAssetUrl`). This sets only the **display** `src` (a Vue ref in the image node view), never
+     `node.attrs.src`, so the **serialized markdown stays relative** (portable). Also fixes display of
+     hand-/Claude-authored relative `![](…)` links.
+  2. **Upload-button / paste-link** (`onUpload`): writes the file via `save_asset` and returns the
+     **relative** path Crepe stores as `src` (untitled doc ⇒ falls back to a transient `blob:` URL).
+  3. **Paste/drop interception** (`imagePastePlugin`): a `$prose` ProseMirror plugin (registered onto
+     the Crepe editor like the mermaid node view) whose `handlePaste`/`handleDrop` pick image files
+     out of `clipboardData`/`dataTransfer`, `preventDefault`, write each via `save_asset`, and insert
+     a commonmark `image` node (`{src: rel}` → `![](rel)`) at the cursor / `posAtCoords` drop point
+     (`Selection.near` snaps to a valid position). Returns `false` when no image files are present, so
+     the default markdown/text paste runs — which is how it **composes with `Cmd+Shift+V` plain paste**
+     (that handler reads clipboard *text* via the keymap and never fires this). Untitled docs (null
+     path) fall through (relative assets need a doc dir).
+  - **Path threading**: `MarkdownWysiwyg`/`QaCell` gained a `filePath` prop, threaded
+    `DocumentView → QaLayout → QaCell → MarkdownWysiwyg`. Since the editor is **mount-once** (reads
+    config at creation), `filePath` is captured in a **ref** (`filePathRef`, like `onChangeRef`) so a
+    rename doesn't strand a stale closure in `proxyDomURL`/`onUpload`/the paste plugin; `filePath` is
+    added to `MarkdownWysiwyg`'s memo comparator so a rename re-renders the wrapper (updating the ref)
+    without rebuilding Crepe.
+  - **Backend** `save_asset(doc_path, file_name, bytes)` (`commands.rs`): `create_dir_all` the
+    sibling `assets/`, choose a non-clobbering name (pure `unique_asset_name(existing, name)` →
+    `x.png`, `x-1.png`, …; basename sanitized by pure `sanitize_asset_name`), `write_atomic`, return
+    the `assets/<name>` path **relative to the doc dir**. Bytes cross IPC as a `number[]` (serde
+    `Vec<u8>`) — reliable for the moderate sizes of pasted images. Custom commands need no capability
+    entry; the asset protocol (`tauri.conf.json` `assetProtocol.scope: ["**"]`) was already on.
+  - **Loading cue**: the local write is fast, so instead of a placeholder node the editor DOM gets a
+    `.nh-image-uploading` class (`cursor: progress`) while a write is in flight. The inserted image is
+    a normal edit → flows through the usual `markdownUpdated` → save path (no `useFileSync` special-case).
+  - Tested: pure helpers (`image-assets.test.ts`: `resolveImageSrc`/`joinPath`/`assetFileName`) and
+    the paste/drop logic (`milkdown-image-paste.test.ts`: `proxyImageUrl`/`uploadImage`/`imageGesture`
+    + the `handlePaste`/`handleDrop` decision wiring with an injected insert, **plus** an integration
+    test running `insertImages` against a real ProseMirror schema/view — asserting the inline `image`
+    node lands with the relative `src`, in order, position-clamped); Rust
+    `unique_asset_name`/`sanitize_asset_name`/`save_asset` round-trip + de-dup. Only the actual
+    WKWebView clipboard/drag *event delivery* is left to manual verification.
 - **Browser fallback**: runs without Tauri using `sample-project.md` for UI testing.
 - **Dark mode**: class-based (`dark`), AG Grid + Tailwind themed. The **theme cycle** (light → dark →
   system) lives in the status bar.

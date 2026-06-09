@@ -4,6 +4,7 @@ import { editorViewCtx } from "@milkdown/kit/core";
 import { diagram } from "@milkdown/plugin-diagram";
 import { mermaidNodeView } from "../lib/milkdown-mermaid";
 import { registerPmView, type PmInsertView } from "../lib/pm-plain-paste";
+import { imagePastePlugin, proxyImageUrl, uploadImage } from "../lib/milkdown-image-paste";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/classic.css";
 
@@ -15,20 +16,29 @@ interface MarkdownWysiwygProps {
   className?: string;
   /** Controls the mermaid diagram theme (light/dark). */
   darkMode?: boolean;
+  /**
+   * Path of the document this editor edits (null = untitled). Used to resolve relative image
+   * `src`s for display and to anchor pasted/dropped images in a sibling `assets/` folder. Read
+   * via a ref so a rename doesn't strand the mount-once editor's config.
+   */
+  filePath?: string | null;
 }
 
 /**
  * Thin React wrapper around a Milkdown Crepe instance — a Typora-style WYSIWYG
  * markdown editor that round-trips to markdown. One instance per mount.
  */
-function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode }: MarkdownWysiwygProps) {
+function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode, filePath }: MarkdownWysiwygProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const crepeRef = useRef<Crepe | null>(null);
 
-  // Keep callbacks in refs so the editor is created once and never torn down on
-  // identity changes of onChange.
+  // Keep callbacks/path in refs so the editor is created once and never torn down on identity
+  // changes of onChange — and so the mount-once image config (proxyDomURL/onUpload/paste) always
+  // reads the current doc path (rename-safe).
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const filePathRef = useRef(filePath ?? null);
+  filePathRef.current = filePath ?? null;
 
   useEffect(() => {
     const root = rootRef.current;
@@ -46,12 +56,23 @@ function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode
         // exactly one blinking cursor globally. (Drop/gap cursors stay enabled.)
         [Crepe.Feature.Cursor]: { virtual: false },
         ...(placeholder ? { [Crepe.Feature.Placeholder]: { text: placeholder } } : {}),
+        // Render relative/local image `src`s as asset URLs (display only — markdown stays
+        // relative). onUpload (upload-button / paste-link) writes the file to disk + stores the
+        // relative path. Cmd+V / drag-drop of an image file is handled by imagePastePlugin below.
+        [Crepe.Feature.ImageBlock]: {
+          proxyDomURL: (url: string) => proxyImageUrl(url, filePathRef.current),
+          onUpload: (file: File) => uploadImage(file, filePathRef.current),
+        },
       },
     });
 
     // Render ```mermaid fences as diagrams. `diagram` adds the schema + remark parsing;
-    // mermaidNodeView draws the SVG (the plugin ships no renderer).
-    crepe.editor.use(diagram).use(mermaidNodeView(!!darkMode));
+    // mermaidNodeView draws the SVG (the plugin ships no renderer). imagePastePlugin intercepts
+    // paste/drop of image files → save to disk + insert a relative link.
+    crepe.editor
+      .use(diagram)
+      .use(mermaidNodeView(!!darkMode))
+      .use(imagePastePlugin(() => filePathRef.current));
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {
@@ -98,8 +119,9 @@ function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode
  * only as `defaultValue` at creation, after which Milkdown owns its own DOM — so a changed `value`
  * never needs a re-render (QaLayout remounts via `key` when content changes externally). This skips
  * the wrapper re-render of the very cell being typed in, whose `value` updates on every keystroke.
- * `onChange` IS compared because the impl writes it into a ref during render; darkMode/placeholder
- * only feed the initial Crepe construction.
+ * `onChange`/`filePath` ARE compared because the impl writes them into refs during render (a
+ * rename must update the path the mount-once image config reads); darkMode/placeholder only feed
+ * the initial Crepe construction.
  */
 export const MarkdownWysiwyg = memo(
   MarkdownWysiwygImpl,
@@ -107,5 +129,6 @@ export const MarkdownWysiwyg = memo(
     prev.onChange === next.onChange &&
     prev.darkMode === next.darkMode &&
     prev.placeholder === next.placeholder &&
-    prev.className === next.className,
+    prev.className === next.className &&
+    prev.filePath === next.filePath,
 );

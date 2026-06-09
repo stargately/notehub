@@ -190,6 +190,7 @@ pub fn run() {
             commands::note_recent_document,
             commands::read_file,
             commands::write_file,
+            commands::save_asset,
             commands::create_file,
             commands::create_dir,
             commands::rename_path,
