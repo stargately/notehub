@@ -100,11 +100,20 @@ export function useProjectFile(
       }
       setProjectData(data);
       if (!filePath) return;
-      syncRef.current?.markDirty(filePath);
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      // Content-aware dirty (mirrors the editor paths in `useViewMode`/`useRawFile`): serialize now
+      // and let `markDirty` compare it to the on-disk baseline. A programmatic re-serialize that
+      // matches what's already on disk isn't a real user edit — keep the buffer clean and cancel/skip
+      // the write, so a later external (Claude) write live-reloads instead of raising a spurious
+      // conflict. This removes the task table's old "always conservatively dirty" false-positive.
+      const content = serializeProjectMd(data);
+      const dirty = syncRef.current ? syncRef.current.markDirty(filePath, content) : true;
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      if (!dirty) return;
       saveTimeoutRef.current = setTimeout(async () => {
         try {
-          const content = serializeProjectMd(data);
           const s = syncRef.current;
           if (s) await s.guardedWrite(filePath, content);
           else await writeFile(filePath, content);

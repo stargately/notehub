@@ -93,6 +93,70 @@ describe("useFileSync reconciliation", () => {
     expect(result.current.conflict).toBeNull();
   });
 
+  it("reloads (does not prompt) when a dirty flag is stale but the buffer equals baseline", async () => {
+    // The core false-positive fix: the dirty flag was set true without a genuine user edit (the
+    // buffer still equals what we loaded — `mine === baseline`). An external write must live-reload
+    // silently, NOT raise a conflict. Encodes "if local isn't editing, just load the latest disk".
+    diskContent = "A";
+    const { result } = renderHook(() => useFileSync());
+    act(() => result.current.markLoaded(PATH, "A"));
+    act(() => result.current.markDirty(PATH)); // flagged dirty without content → conservatively true
+
+    diskContent = "EXTERNAL"; // Claude rewrote the file
+    const applyReload = vi.fn();
+    await act(async () => {
+      // `mine` is still the loaded content "A" (no real edit) even though dirty === true.
+      await result.current.reconcile(PATH, "A", applyReload);
+    });
+    expect(result.current.conflict).toBeNull(); // no modal
+    expect(applyReload).toHaveBeenCalledTimes(1); // live-reloaded latest disk
+
+    // Baseline advanced + dirty cleared, so a later watcher tick for the same bytes is a no-op echo.
+    diskContent = "EXTERNAL";
+    applyReload.mockClear();
+    await act(async () => {
+      await result.current.reconcile(PATH, "EXTERNAL", applyReload);
+    });
+    expect(applyReload).not.toHaveBeenCalled();
+    expect(result.current.conflict).toBeNull();
+  });
+
+  it("task-table no-edit reload: a re-serialize matching baseline never prompts on an external write", async () => {
+    // Simulates the `layout: todo` path: a programmatic re-serialize re-emits the on-disk bytes, so
+    // content-aware markDirty keeps it clean; an external write then live-reloads instead of conflicting.
+    diskContent = "TABLE";
+    const { result } = renderHook(() => useFileSync());
+    act(() => result.current.markLoaded(PATH, "TABLE"));
+    let dirty: boolean | undefined;
+    act(() => { dirty = result.current.markDirty(PATH, "TABLE"); }); // serialize === baseline
+    expect(dirty).toBe(false); // not a real edit → caller skips its write
+
+    diskContent = "EXTERNAL";
+    const applyReload = vi.fn();
+    await act(async () => {
+      await result.current.reconcile(PATH, "TABLE", applyReload);
+    });
+    expect(result.current.conflict).toBeNull();
+    expect(applyReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("still conflicts on a genuine concurrent edit (buffer diverged from both baseline and disk)", async () => {
+    // Guardrail: the `mine === baseline` short-circuit must NOT swallow a real conflict. Here the user
+    // genuinely edited (mine !== baseline) and Claude wrote something else (mine !== disk).
+    diskContent = "A";
+    const { result } = renderHook(() => useFileSync());
+    act(() => result.current.markLoaded(PATH, "A"));
+    act(() => { result.current.markDirty(PATH, "MINE"); }); // real edit
+
+    diskContent = "EXTERNAL";
+    const applyReload = vi.fn();
+    await act(async () => {
+      await result.current.reconcile(PATH, "MINE", applyReload);
+    });
+    expect(applyReload).not.toHaveBeenCalled();
+    expect(result.current.conflict).toEqual({ path: PATH, disk: "EXTERNAL", mine: "MINE" });
+  });
+
   it("content-aware markDirty: a baseline re-emit stays clean and reports not-dirty", async () => {
     // A WYSIWYG re-emit of the on-disk bytes (content === baseline) is not a real edit: markDirty
     // returns false (so the caller cancels its pending write) and a following external change

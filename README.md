@@ -309,10 +309,12 @@ is always authoritative:
   silently discarded, and NoteHub never silently overwrites an external change.
 
 The prompt is **content-truthful**: it only appears when your in-memory version actually
-differs from *both* the last-synced version *and* the new version on disk. If the other
-tool just wrote the same content you already have — or your editor re-saved the file
-unchanged — NoteHub reconciles silently instead of nagging you. Your own edits autosave
-(300ms debounce) and never trigger a false "changed on disk" prompt.
+differs from *both* the last-synced version *and* the new version on disk. If you're just
+viewing a file (not actively editing it) when the other tool rewrites it, NoteHub reloads
+the latest disk version silently — no dialog — for **every** document type, task tables
+included. Likewise if the other tool just wrote the same content you already have, or your
+editor re-saved the file unchanged. Your own edits autosave (300ms debounce) and never
+trigger a false "changed on disk" prompt.
 
 ## Keyboard Shortcuts
 

@@ -47,9 +47,11 @@ export function useFileSync() {
    * re-serializing the content it was just handed (Milkdown fires `markdownUpdated` on its own
    * post-mount normalization, e.g. the trailing-paragraph plugin). Flagging the buffer dirty for
    * that would make the next external write raise a spurious "file changed on disk" conflict, so
-   * we keep it clean (return `false`) and the caller cancels its pending write. With no `content`
-   * (task-table edits, whose serialization needn't round-trip the on-disk bytes) we conservatively
-   * flag dirty.
+   * we keep it clean (return `false`) and the caller cancels its pending write. Every edit path now
+   * passes `content` — the editor paths (`useViewMode`/`useRawFile`) and the task-table path
+   * (`useProjectFile.saveProject`, which serializes eagerly and compares). With no `content` we
+   * conservatively flag dirty; `reconcile`'s `mine === baseline` guard is the backstop that keeps a
+   * stale/over-eager dirty flag from turning an external write into a spurious conflict.
    *
    * Invariant this preserves: a pending debounced write exists only while `dirty` is true. That's
    * what lets a clean live-reload run without a stale write later clobbering the external change —
@@ -118,6 +120,20 @@ export function useFileSync() {
       if (mine === disk) {
         baselineRef.current.set(path, disk);
         dirtyRef.current.set(path, false);
+        return;
+      }
+      // Content-truthful "not editing" check: if the buffer still equals what we last loaded/wrote
+      // (baseline), the user hasn't genuinely diverged it — a `dirty` flag set true without a real
+      // user edit (e.g. the conservative task-table re-serialize, or a byte-changing WYSIWYG
+      // normalization that later wrote itself back so baseline caught up) must not turn an external
+      // write into a conflict. Adopt the new disk content and live-reload it, exactly like a clean
+      // buffer (VS Code / IntelliJ: if local isn't editing, just load the latest disk). This guards
+      // *only* `mine === baseline`; a genuine concurrent edit (`mine !== baseline && mine !== disk`)
+      // still falls through to the conflict prompt below — no local edits are ever silently dropped.
+      if (mine === baseline) {
+        baselineRef.current.set(path, disk);
+        dirtyRef.current.set(path, false);
+        applyReload(); // NOT GENUINELY DIRTY → live reload
         return;
       }
       if (!dirtyRef.current.get(path)) {

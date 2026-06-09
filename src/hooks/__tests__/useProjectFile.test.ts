@@ -40,6 +40,25 @@ vi.mock("../../lib/tauri-api", () => ({
 }));
 
 import { useProjectFile } from "../useProjectFile";
+import type { FileSync } from "../useFileSync";
+
+// A stub FileSync whose markDirty verdict is scripted, so we can assert saveProject's content-aware
+// wiring (passes the serialized content, skips the write when not dirty) without depending on
+// whether serializeProjectMd round-trips the template byte-for-byte.
+function stubSync(markDirtyReturns: boolean) {
+  const markDirty = vi.fn((_path: string, _content?: string) => markDirtyReturns);
+  const guardedWrite = vi.fn(async (_path: string, _content: string) => true);
+  const sync = {
+    conflict: null,
+    markLoaded: vi.fn(),
+    markDirty,
+    guardedWrite,
+    reconcile: vi.fn(),
+    resolveKeepDisk: vi.fn(),
+    resolveKeepMine: vi.fn(async () => {}),
+  } as unknown as FileSync;
+  return { sync, markDirty, guardedWrite };
+}
 
 // Flush the load chain (await readFile → setState → effects).
 const settle = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -121,6 +140,40 @@ describe("useProjectFile stale-data guard", () => {
     expect(writeFileMock).toHaveBeenCalledTimes(1);
     expect(writeFileMock.mock.calls[0][0]).toBe("/b.md");
     expect(writeFileMock.mock.calls[0][1]).toContain("FROM-B");
+  });
+
+  it("content-aware dirty: passes the serialized content to markDirty and skips the write when not dirty", async () => {
+    // The task-table false-dirty fix: a re-serialize that matches the on-disk baseline (markDirty
+    // → false) is not a real edit, so no guarded write is scheduled — the next external write can
+    // live-reload instead of raising a spurious conflict.
+    disk["/a.md"] = todo("A");
+    const { sync, markDirty, guardedWrite } = stubSync(false);
+    const { result } = renderHook(() => useProjectFile("/a.md", undefined, undefined, sync));
+    await settle();
+
+    act(() => result.current.saveProject({ ...result.current.projectData! }));
+    await flushDebounce();
+
+    expect(markDirty).toHaveBeenCalled();
+    const lastCall = markDirty.mock.calls[markDirty.mock.calls.length - 1];
+    expect(lastCall[0]).toBe("/a.md");
+    expect(typeof lastCall[1]).toBe("string"); // content passed, not undefined
+    expect(guardedWrite).not.toHaveBeenCalled(); // not dirty → no write
+    expect(writeFileMock).not.toHaveBeenCalled();
+  });
+
+  it("content-aware dirty: a genuine edit (markDirty true) still schedules a guarded write", async () => {
+    disk["/a.md"] = todo("A");
+    const { sync, guardedWrite } = stubSync(true);
+    const { result } = renderHook(() => useProjectFile("/a.md", undefined, undefined, sync));
+    await settle();
+
+    act(() => result.current.saveProject({ ...result.current.projectData!, notes: "EDIT" }));
+    await flushDebounce();
+
+    expect(guardedWrite).toHaveBeenCalledTimes(1);
+    expect(guardedWrite.mock.calls[0][0]).toBe("/a.md");
+    expect(guardedWrite.mock.calls[0][1]).toContain("EDIT");
   });
 
   it("cancels a pending autosave on unmount (closing a tab can't recreate a deleted file)", async () => {
