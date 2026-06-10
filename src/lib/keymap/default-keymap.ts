@@ -46,12 +46,21 @@ export const DEFAULT_KEYMAP: Keymap = [
     },
   },
   {
-    // Milkdown WYSIWYG editor (layout: qa and plain markdown docs).
+    // Milkdown WYSIWYG editor (layout: qa and plain markdown docs). The QA context stays active
+    // for these docs in the raw Monaco view too, so Cmd+Shift+O works in both modes.
     context: "QA",
     bindings: {
       "mod-shift-p": "editor::Print",
       "mod-f": "editor::Find",
       "mod-shift-v": "editor::PasteAsPlainText", // into the focused Milkdown cell
+      "mod-shift-o": "editor::GoToSymbol",
+    },
+  },
+  {
+    // Raw Monaco markdown editor (the Cmd+/ view of a `layout: todo` doc).
+    context: "Editor",
+    bindings: {
+      "mod-shift-o": "editor::GoToSymbol",
     },
   },
   {

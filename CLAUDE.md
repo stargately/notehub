@@ -26,6 +26,8 @@ notehub/
 │   │   ├── Sidebar.tsx         # Collapsible, resizable workspace file-tree panel (header = folder name)
 │   │   ├── FileTree.tsx        # Lazy recursive tree + right-click ops & inline create/rename
 │   │   ├── QuickOpen.tsx       # Cmd+P fuzzy file finder overlay (gitignore-aware index)
+│   │   ├── OutlinePanel.tsx    # Right-docked document outline (headings, click to scroll-to)
+│   │   ├── GoToHeading.tsx     # Cmd+Shift+O fuzzy go-to-heading overlay (QuickOpen pattern)
 │   │   ├── ContextMenu.tsx     # Shared floating menu (FileTree right-click, TabBar)
 │   │   ├── ConfirmModal.tsx    # Generic confirm dialog (e.g. move-to-Trash)
 │   │   ├── KeybindingsHelp.tsx # Keyboard-shortcuts reference + user keymap JSON editor
@@ -47,6 +49,7 @@ notehub/
 │   │   ├── tree.ts             # sortEntries (dirs first, case-insensitive)
 │   │   ├── tree-refresh.ts     # file-changed → re-read tree dirs (subscribeDir/subscribeAll bus)
 │   │   ├── fuzzy.ts            # fzy-style fuzzy matcher for Cmd+P (pure, unit-tested)
+│   │   ├── outline.ts          # Pure markdown heading parser + DOM-heading matcher (outline/Cmd+Shift+O)
 │   │   ├── recent-files.ts    # in-memory MRU for Cmd+P empty-query ordering
 │   │   ├── tear-off.ts        # pure predicate: was a dragged tab released outside the window?
 │   │   ├── keymap/            # Zed-style keymap: keystroke/context/matcher + provider & hooks
@@ -114,10 +117,11 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — tests live in adjacent `__tests__/` dirs. Coverage spans pure
   `src/lib/` modules (`markdown-parser`, `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`,
-  `tree-refresh`, `fuzzy`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste` + the keymap engine `keymap/__tests__/`:
-  `keystroke`/`context`/`keymap`/`user-keymap`/`provider`), the buffer/sync hooks (`useFileSync`,
+  `tree-refresh`, `fuzzy`, `outline`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste` + the keymap engine `keymap/__tests__/`:
+  `keystroke`/`context`/`keymap`/`user-keymap`/`default-keymap`/`provider`), the buffer/sync hooks (`useFileSync`,
   `useProjectFile`, `useViewMode`, `useRawFile`, `useTabManagement`, `useUndoHistory`, `useNativeMenu`),
-  and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`, `Sidebar`). The load-bearing
+  and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`, `Sidebar`,
+  `OutlinePanel`, `GoToHeading`, `MarkdownEditor`, `DocumentView.outline`). The load-bearing
   guarantees they lock in: the **loaded-path guard** (one tab's content is never written to another
   file, the editor is never seeded from a stale `projectData`), per-tab edit routing with **no
   cross-write**, the **`React.memo` guarantee** (a parent re-render with unchanged props doesn't
@@ -388,6 +392,31 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
     node lands with the relative `src`, in order, position-clamped); Rust
     `unique_asset_name`/`sanitize_asset_name`/`save_asset` round-trip + de-dup. Only the actual
     WKWebView clipboard/drag *event delivery* is left to manual verification.
+- **Document outline + go-to-heading** (`src/lib/outline.ts`, `OutlinePanel.tsx`, `GoToHeading.tsx`):
+  a heading navigator for every markdown view — Typora's outline panel + Zed's Go to Symbol
+  (`Cmd+Shift+O`). The pure parser `parseOutline(source)` runs over the doc's **raw markdown string**
+  (`editorContent` — the one string both the Milkdown WYSIWYG and raw Monaco edit), returning
+  `{ level, text, raw, line }[]`: ATX + setext headings, blockquote-nested included, fenced code +
+  YAML frontmatter skipped, inline markdown stripped from `text` (best-effort regex,
+  `stripInlineMarkdown`). `DocumentView` owns the feature per tab: it memoizes the outline off
+  `editorContent` (so it tracks every edit + live reload), renders the right-docked `OutlinePanel`
+  (collapsible; open-state persisted in localStorage `nh-outline-open`) and the `GoToHeading` overlay
+  (fuzzy via `fuzzy.ts`, QuickOpen-style), and resolves a jump per view: **Monaco** via a
+  `revealLineRef` handle the editor fills on mount (`revealLineInCenter(line + 1)` + cursor + focus;
+  cleared on unmount, which is also how `jumpToHeading` detects which view is live), **WYSIWYG** by
+  mapping the heading to its rendered `<h1>–<h6>` (the QA layout is many editors, so source offsets
+  don't translate): `findDomHeadingIndex` matches (level, stripped text, occurrence) against the
+  DOM headings under `.nh-qa-doc .ProseMirror`, falling back positionally, then `scrollIntoView`.
+  Setext + blockquote parsing isn't completeness pedantry — it keeps the source-order outline index
+  aligned with the rendered heading list so occurrence-matching stays correct. Keymap: `mod-shift-o`
+  in the `QA` + `Editor` contexts (registered by the active `DocumentView` only);
+  `editor::ToggleOutline` is remappable but unbound (header icon toggles the panel). Tests:
+  `outline.test.ts` (parser/matcher), `OutlinePanel.test.tsx`, `GoToHeading.test.tsx`,
+  `default-keymap.test.ts` (the `mod-shift-o` bindings + context gating), `MarkdownEditor.test.tsx`
+  (the `revealLineRef` fill/clear + the Cmd+Shift+O bridge against a fake Monaco), and
+  `DocumentView.outline.test.tsx` (integration: panel toggle + persistence, overlay open via a real
+  window keydown through the keymap, both jump routes — DOM `scrollIntoView` in the WYSIWYG view vs
+  `revealLineInCenter` in the raw view — and inertness on non-markdown tabs).
 - **Browser fallback**: runs without Tauri using `sample-project.md` for UI testing.
 - **Dark mode**: class-based (`dark`), AG Grid + Tailwind themed. The **theme cycle** (light → dark →
   system) lives in the status bar.
@@ -427,6 +456,11 @@ remap anything via **File → Keyboard Shortcuts…** (`KeybindingsHelp.tsx`). D
   via a `findFocusTick` `QaFindBar` keys on (`setFindOpen(true)` alone wouldn't re-focus).
 - `Cmd+P` — Quick-open fuzzy file finder (`QuickOpen.tsx`). `mod-p` binds with `shift` off, so
   `Cmd+Shift+P` (print) is a distinct binding.
+- `Cmd+Shift+O` — Go to heading (`editor::GoToSymbol`, Zed's "Go to Symbol"): a fuzzy finder over
+  the active doc's outline (`GoToHeading.tsx`). Bound in the `QA` and `Editor` contexts (every
+  markdown view); Monaco bridges it like `Cmd+/` since its own Go-to-Symbol would eat it. The
+  companion outline panel (`editor::ToggleOutline`, no default binding) toggles via the header's
+  outline icon. See *Document outline* under Architecture Notes.
 - `Cmd+O` — Open a file via the OS dialog (`file::Open` → `handleAddTab`).
 - `Cmd+Shift+P` — Print the `layout: qa` doc (compact cheatsheet, letter, two columns + diagrams).
   WKWebView has no working `window.print()`, so `src/lib/print.ts` renders the markdown to

@@ -62,4 +62,18 @@ describe("QaLayout header (thin Zed-style title bar)", () => {
     fireEvent.click(screen.getByTitle(/Edit raw markdown/i));
     expect(onToggleEditor).toHaveBeenCalledTimes(1);
   });
+
+  it("hides the outline toggle when not wired (no onToggleOutline)", () => {
+    renderQa();
+    expect(screen.queryByTitle("Toggle outline")).toBeNull();
+  });
+
+  it("shows the outline toggle when wired; click calls it and aria-pressed mirrors the panel state", () => {
+    const onToggleOutline = vi.fn();
+    renderQa({ onToggleOutline, outlineOpen: true });
+    const btn = screen.getByTitle("Toggle outline");
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(btn);
+    expect(onToggleOutline).toHaveBeenCalledTimes(1);
+  });
 });

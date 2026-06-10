@@ -184,6 +184,23 @@ All of this chrome follows the app theme — slash menu, toolbars, and tooltips 
 light and dark mode. The same rich editing (including task-list checkboxes) is available in the task
 detail drawer's description field.
 
+## Document Outline & Go to Heading
+
+Every markdown view (plain markdown, `layout: qa`, and the raw `Cmd+/` editor) gets a heading-based
+navigator, like Typora's outline panel and Zed's "Go to Symbol":
+
+- **Outline panel** — click the outline icon in the document header to dock a collapsible panel on
+  the right listing the doc's headings (H1–H6, nested by indentation). Click a heading to scroll to
+  it. The outline updates live as you type, and the open/closed preference is remembered.
+- **Go to heading (`Cmd+Shift+O`)** — a fuzzy finder over the active document's headings (the same
+  matcher as `Cmd+P`). An empty query shows the whole outline in document order; type to filter,
+  `Enter` jumps to the selection. In the raw editor the cursor moves to the heading's line; in the
+  WYSIWYG view the rendered heading scrolls into view.
+
+Headings are parsed from the markdown source — ATX (`# …`) and setext (`===`/`---`) headings count,
+including inside blockquotes, while headings inside fenced code blocks and YAML frontmatter are
+ignored. In a Q&A doc the outline spans the whole document (header, questions, answers, and notes).
+
 ## Custom Fields
 
 Any field added to `columns` in frontmatter automatically appears as a column. By default, custom fields render as plain text. Use the `type` property to get richer rendering:
@@ -338,6 +355,7 @@ The defaults:
 | `Cmd+/` | Toggle raw markdown editor (formatted ↔ raw for `layout: qa` and plain markdown files) |
 | `Cmd+Shift+V` | Paste as plain text — insert the clipboard as literal, unformatted text (Typora-style) in the WYSIWYG editors |
 | `Cmd+P` | Quick-open: fuzzy file finder over the workspace |
+| `Cmd+Shift+O` | Go to heading: fuzzy finder over the active doc's outline |
 | `Cmd+Shift+P` | Print the QA doc (compact cheatsheet, letter size) |
 | `Cmd+B` | Toggle the workspace file-tree sidebar |
 | `Cmd+1-9` | Switch tabs |

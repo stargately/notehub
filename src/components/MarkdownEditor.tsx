@@ -18,6 +18,11 @@ interface MarkdownEditorProps {
    * We snapshot the scroll *fraction* and re-apply it once the reflow settles (preserves reading pos).
    */
   sidebarOpen?: boolean;
+  /**
+   * Receives a "reveal this 1-based line" function once the editor mounts (cleared on unmount) —
+   * the outline panel / go-to-heading overlay jump through it (`revealLineInCenter` + cursor + focus).
+   */
+  revealLineRef?: MutableRefObject<((line: number) => void) | null>;
   onUndoExhausted?: () => string | null;
   onRedoExhausted?: () => string | null;
 }
@@ -36,7 +41,7 @@ const MONACO_OPTIONS: EditorProps["options"] = {
   padding: { top: 16 },
 };
 
-function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown", scrollRef, sidebarOpen, onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
+function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown", scrollRef, sidebarOpen, revealLineRef, onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialVersionRef = useRef<number>(0);
   const editorRef = useRef<MonacoEditor | null>(null);
@@ -47,6 +52,16 @@ function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown"
   const liveFractionRef = useRef(0);
   const scrollRefProp = useRef(scrollRef);
   scrollRefProp.current = scrollRef;
+  const revealRefProp = useRef(revealLineRef);
+  revealRefProp.current = revealLineRef;
+
+  // Drop the reveal handle when this editor unmounts (Cmd+/ back to the WYSIWYG view) so a jump
+  // can't reach a disposed Monaco instance.
+  useEffect(() => {
+    return () => {
+      if (revealRefProp.current) revealRefProp.current.current = null;
+    };
+  }, []);
 
   // Write our final scroll progress into the shared slot when this editor unmounts (Cmd+/ toggle),
   // so the incoming WYSIWYG view can resume at the same place. A *layout*-effect cleanup so it runs
@@ -115,6 +130,15 @@ function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown"
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     editor.focus();
+
+    // Hand the outline/go-to-heading jump a way into this editor.
+    if (revealRefProp.current) {
+      revealRefProp.current.current = (line: number) => {
+        editor.revealLineInCenter(line);
+        editor.setPosition({ lineNumber: line, column: 1 });
+        editor.focus();
+      };
+    }
 
     // Track scroll progress so it can be handed to the WYSIWYG view on a Cmd+/ toggle.
     const layoutHeight = () => editor.getLayoutInfo().height;
@@ -203,6 +227,24 @@ function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown"
             key: "s",
             code: "KeyS",
             metaKey: true,
+            bubbles: true,
+          })
+        );
+      }
+    );
+
+    // Bridge Cmd+Shift+O (otherwise eaten by Monaco's own "Go to Symbol") so the keymap's
+    // go-to-heading overlay opens instead.
+    editor.addCommand(
+      // eslint-disable-next-line no-bitwise
+      monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyO,
+      () => {
+        containerRef.current?.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "O",
+            code: "KeyO",
+            metaKey: true,
+            shiftKey: true,
             bubbles: true,
           })
         );

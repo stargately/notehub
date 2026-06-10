@@ -1,13 +1,14 @@
-import { useState, useRef, useCallback, useEffect, memo, type MutableRefObject } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo, memo, type MutableRefObject } from "react";
 import { useProjectFile } from "../hooks/useProjectFile";
 import { useViewMode } from "../hooks/useViewMode";
 import { useTaskFilters } from "../hooks/useTaskFilters";
 import { useFileSync } from "../hooks/useFileSync";
 import { useFileWatcher } from "../hooks/useFileWatcher";
 import { useClickOutside } from "../hooks/useClickOutside";
-import { useKeymapContext } from "../lib/keymap/provider";
-import { CONTEXTS } from "../lib/keymap/actions";
+import { useKeymapContext, useKeymapAction } from "../lib/keymap/provider";
+import { CONTEXTS, ACTIONS } from "../lib/keymap/actions";
 import { serializeProjectMd } from "../lib/markdown-parser";
+import { parseOutline, findDomHeadingIndex } from "../lib/outline";
 import { deriveBaseName } from "../lib/print";
 import type { ProjectData, TabInfo, WeekFilter, FileKind, Task } from "../lib/types";
 import type { UndoHistory } from "../hooks/useUndoHistory";
@@ -18,7 +19,16 @@ import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { RawFileEditor } from "./RawFileEditor";
 import { QaLayout } from "./QaLayout";
+import { OutlinePanel } from "./OutlinePanel";
+import { GoToHeading } from "./GoToHeading";
 import { ConflictModal } from "./ConflictModal";
+
+/** Whether the outline panel was left open — a global preference, read per tab on mount. */
+const OUTLINE_OPEN_KEY = "nh-outline-open";
+
+const WYSIWYG_HEADING_SELECTOR = [1, 2, 3, 4, 5, 6]
+  .map((n) => `.nh-qa-doc .ProseMirror h${n}`)
+  .join(", ");
 
 /**
  * The commands the active document exposes to the global keymap / menu (Cmd+S, Cmd+R, Cmd+/,
@@ -172,6 +182,69 @@ function DocumentViewImpl({
   // "raw unless todo": both `layout: qa` and plain (no-layout) docs are edited as raw markdown.
   const isRawDoc = !!projectData && projectData.meta.layout !== "todo";
 
+  // ── Document outline + go-to-heading. Available whenever a markdown view is showing: the
+  // WYSIWYG (QaLayout) or the raw Monaco editor — not the task grid or raw/image files. ──
+  const showsMarkdownView = !isRawFile && !!projectData && (isRawDoc || viewMode === "editor");
+  const [outlineOpen, setOutlineOpen] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(OUTLINE_OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [gotoOpen, setGotoOpen] = useState(false);
+  const contentAreaRef = useRef<HTMLDivElement>(null);
+  // Filled by the mounted Monaco editor (cleared on its unmount): jump-to-line for the raw view.
+  const revealLineRef = useRef<((line: number) => void) | null>(null);
+
+  const toggleOutline = useCallback(() => {
+    setOutlineOpen((v) => {
+      try {
+        localStorage.setItem(OUTLINE_OPEN_KEY, v ? "0" : "1");
+      } catch {
+        /* preference only */
+      }
+      return !v;
+    });
+  }, []);
+
+  // Both views edit the same raw string, so one parse serves Monaco (by line) and the WYSIWYG
+  // (by rendered heading element). Recomputed when the (debounced-save, live-updated) content changes.
+  const outline = useMemo(
+    () => (showsMarkdownView ? parseOutline(editorContent) : []),
+    [showsMarkdownView, editorContent],
+  );
+  const outlineRef = useRef(outline);
+  outlineRef.current = outline;
+
+  const jumpToHeading = useCallback(
+    (index: number) => {
+      const headings = outlineRef.current;
+      const h = headings[index];
+      if (!h) return;
+      if (revealLineRef.current) {
+        // Raw Monaco view — `line` is 0-based in the same string Monaco shows.
+        revealLineRef.current(h.line + 1);
+        return;
+      }
+      // WYSIWYG view — map the heading to its rendered element and scroll it into view.
+      const container = contentAreaRef.current;
+      if (!container) return;
+      const els = Array.from(container.querySelectorAll<HTMLElement>(WYSIWYG_HEADING_SELECTOR));
+      const dom = els.map((el) => ({
+        level: Number(el.tagName.charAt(1)),
+        text: el.textContent ?? "",
+      }));
+      const at = findDomHeadingIndex(headings, index, dom);
+      if (at >= 0) els[at].scrollIntoView({ block: "start", behavior: "smooth" });
+    },
+    [],
+  );
+
+  // Cmd+Shift+O (go-to-heading) + the remappable outline toggle — active markdown views only.
+  useKeymapAction(ACTIONS.goToSymbol, () => setGotoOpen(true), active && showsMarkdownView);
+  useKeymapAction(ACTIONS.toggleOutline, toggleOutline, active && showsMarkdownView);
+
   // ── Keymap contexts — only the active tab contributes them. ──
   useKeymapContext(CONTEXTS.grid, active && !!projectData && !isRawDoc && !isRawFile && viewMode === "grid");
   useKeymapContext(CONTEXTS.editor, active && !!projectData && !isRawDoc && !isRawFile && viewMode === "editor");
@@ -242,121 +315,152 @@ function DocumentViewImpl({
         />
       )}
 
-      {viewMode === "editor" ? (
-        <>
-          <div className="nh-doc-header">
-            <span className="text-[13px] font-semibold truncate" style={{ color: "var(--nh-text)" }}>
-              {deriveBaseName(filePath) || "Untitled"}
-            </span>
-            <span className="text-[10px] uppercase tracking-wide shrink-0" style={{ color: "var(--nh-text-tertiary)" }}>
-              Markdown
-            </span>
-            <div className="flex-1" />
-            <button
-              onClick={handleToggleViewMode}
-              className="nh-icon-btn"
-              title={`Grid view (${navigator.platform.includes("Mac") ? "⌘/" : "Ctrl+/"})`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-            </button>
-          </div>
+      {showsMarkdownView && (
+        <GoToHeading
+          open={gotoOpen}
+          onClose={() => setGotoOpen(false)}
+          headings={outline}
+          onJump={jumpToHeading}
+        />
+      )}
 
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <MarkdownEditor
+      <div className="flex-1 flex flex-row overflow-hidden min-h-0">
+        <div ref={contentAreaRef} className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {viewMode === "editor" ? (
+            <>
+              <div className="nh-doc-header">
+                <span className="text-[13px] font-semibold truncate" style={{ color: "var(--nh-text)" }}>
+                  {deriveBaseName(filePath) || "Untitled"}
+                </span>
+                <span className="text-[10px] uppercase tracking-wide shrink-0" style={{ color: "var(--nh-text-tertiary)" }}>
+                  Markdown
+                </span>
+                <div className="flex-1" />
+                <button
+                  onClick={toggleOutline}
+                  className="nh-icon-btn"
+                  title="Toggle outline"
+                  aria-pressed={outlineOpen}
+                  style={outlineOpen ? { color: "var(--nh-accent)" } : undefined}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M9 12h11M13 18h7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleToggleViewMode}
+                  className="nh-icon-btn"
+                  title={`Grid view (${navigator.platform.includes("Mac") ? "⌘/" : "Ctrl+/"})`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <MarkdownEditor
+                  content={editorContent}
+                  onChange={handleEditorChange}
+                  darkMode={darkMode}
+                  scrollRef={viewScrollRef}
+                  sidebarOpen={sidebarOpen}
+                  revealLineRef={revealLineRef}
+                  onUndoExhausted={handleUndoExhausted}
+                  onRedoExhausted={handleRedoExhausted}
+                />
+              </div>
+            </>
+          ) : isRawDoc ? (
+            <QaLayout
               content={editorContent}
               onChange={handleEditorChange}
+              onToggleEditor={handleToggleViewMode}
               darkMode={darkMode}
               scrollRef={viewScrollRef}
               sidebarOpen={sidebarOpen}
-              onUndoExhausted={handleUndoExhausted}
-              onRedoExhausted={handleRedoExhausted}
+              fileName={deriveBaseName(filePath)}
+              filePath={filePath}
+              variant={isQa ? "qa" : "plain"}
+              active={active}
+              outlineOpen={outlineOpen}
+              onToggleOutline={toggleOutline}
             />
-          </div>
-        </>
-      ) : isRawDoc ? (
-        <QaLayout
-          content={editorContent}
-          onChange={handleEditorChange}
-          onToggleEditor={handleToggleViewMode}
-          darkMode={darkMode}
-          scrollRef={viewScrollRef}
-          sidebarOpen={sidebarOpen}
-          fileName={deriveBaseName(filePath)}
-          filePath={filePath}
-          variant={isQa ? "qa" : "plain"}
-          active={active}
-        />
-      ) : (
-        <>
-          <Toolbar
-            fileName={deriveBaseName(filePath)}
-            filterText={filterText}
-            groupBy={groupBy}
-            hideDone={hideDone}
-            showNotes={showNotes}
-            weekFilter={weekFilter}
-            onFilterChange={setFilterText}
-            onGroupByChange={setGroupBy}
-            onToggleHideDone={() => setHideDone(!hideDone)}
-            onAddTask={handleAddTask}
-            onToggleNotes={() => setShowNotes(!showNotes)}
-            onWeekFilterChange={setWeekFilter}
-            onToggleEditor={handleToggleViewMode}
-            active={active}
-          />
+          ) : (
+            <>
+              <Toolbar
+                fileName={deriveBaseName(filePath)}
+                filterText={filterText}
+                groupBy={groupBy}
+                hideDone={hideDone}
+                showNotes={showNotes}
+                weekFilter={weekFilter}
+                onFilterChange={setFilterText}
+                onGroupByChange={setGroupBy}
+                onToggleHideDone={() => setHideDone(!hideDone)}
+                onAddTask={handleAddTask}
+                onToggleNotes={() => setShowNotes(!showNotes)}
+                onWeekFilterChange={setWeekFilter}
+                onToggleEditor={handleToggleViewMode}
+                active={active}
+              />
 
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {loading ? (
-              <div className="flex-1 flex items-center justify-center">
-                <div className="flex items-center gap-2" style={{ color: "var(--nh-text-tertiary)" }}>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span className="text-sm">Loading...</span>
-                </div>
-              </div>
-            ) : projectData ? (
-              <>
-                <div className="flex-1 flex overflow-hidden">
-                  <div className="flex-1 overflow-hidden">
-                    <TaskTable
-                      tasks={filteredTasks}
-                      meta={projectData.meta}
-                      filterText={filterText}
-                      highlightTaskId={highlightTaskId}
-                      onTasksChanged={handleTasksChanged}
-                      onTaskSelected={handleTaskSelected}
-                    />
-                  </div>
-
-                  {selectedTask && (
-                    <div ref={drawerRef}>
-                      <TaskDetailDrawer
-                        task={selectedTask}
-                        onDescriptionChange={handleDescriptionChange}
-                        onDelete={handleDeleteTask}
-                        onClose={() => setSelectedTaskId(null)}
-                        active={active}
-                      />
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {loading ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="flex items-center gap-2" style={{ color: "var(--nh-text-tertiary)" }}>
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      <span className="text-sm">Loading...</span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : projectData ? (
+                  <>
+                    <div className="flex-1 flex overflow-hidden">
+                      <div className="flex-1 overflow-hidden">
+                        <TaskTable
+                          tasks={filteredTasks}
+                          meta={projectData.meta}
+                          filterText={filterText}
+                          highlightTaskId={highlightTaskId}
+                          onTasksChanged={handleTasksChanged}
+                          onTaskSelected={handleTaskSelected}
+                        />
+                      </div>
 
-                {showNotes && (
-                  <ProjectNotes
-                    notes={projectData.notes}
-                    onUpdateNotes={updateNotes}
-                    darkMode={darkMode}
-                  />
-                )}
-              </>
-            ) : null}
-          </div>
-        </>
-      )}
+                      {selectedTask && (
+                        <div ref={drawerRef}>
+                          <TaskDetailDrawer
+                            task={selectedTask}
+                            onDescriptionChange={handleDescriptionChange}
+                            onDelete={handleDeleteTask}
+                            onClose={() => setSelectedTaskId(null)}
+                            active={active}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {showNotes && (
+                      <ProjectNotes
+                        notes={projectData.notes}
+                        onUpdateNotes={updateNotes}
+                        darkMode={darkMode}
+                      />
+                    )}
+                  </>
+                ) : null}
+              </div>
+            </>
+          )}
+        </div>
+
+        {showsMarkdownView && outlineOpen && (
+          <OutlinePanel headings={outline} onJump={jumpToHeading} onClose={toggleOutline} />
+        )}
+      </div>
     </>
   );
 }

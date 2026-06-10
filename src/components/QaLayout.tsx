@@ -44,6 +44,9 @@ interface QaLayoutProps {
   variant?: "qa" | "plain";
   /** Whether this doc's tab is active — gates its keymap shortcuts (Cmd+F find, Cmd+Shift+P print). */
   active?: boolean;
+  /** Outline panel visibility + toggle (owned by DocumentView); button hidden when not provided. */
+  outlineOpen?: boolean;
+  onToggleOutline?: () => void;
   /** Shared scroll-progress fraction carried across a Cmd+/ view toggle (see DocumentView). */
   scrollRef?: MutableRefObject<number | null>;
   /**
@@ -126,6 +129,7 @@ const QaCell = memo(function QaCell({ field, className, value, darkMode, placeho
 export function QaLayout({
   content, onChange, onToggleEditor, darkMode, fileName, filePath,
   variant = "qa", active = true, scrollRef, sidebarOpen,
+  outlineOpen, onToggleOutline,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
   // Bumped on EXTERNAL change / replace — used only to re-run the find match collection (the
@@ -379,6 +383,19 @@ export function QaLayout({
           {variant === "qa" ? "Q&A" : "Markdown"}
         </span>
         <div className="flex-1" />
+        {onToggleOutline && (
+          <button
+            onClick={onToggleOutline}
+            className="nh-icon-btn"
+            title="Toggle outline"
+            aria-pressed={outlineOpen}
+            style={outlineOpen ? { color: "var(--nh-accent)" } : undefined}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M9 12h11M13 18h7" />
+            </svg>
+          </button>
+        )}
         <button
           onClick={() => printRef.current()}
           className="nh-icon-btn"

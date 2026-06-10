@@ -21,6 +21,8 @@ export const ACTIONS = {
   redo: "editor::Redo",
   find: "editor::Find",
   print: "editor::Print",
+  goToSymbol: "editor::GoToSymbol", // Cmd+Shift+O — fuzzy go-to-heading overlay
+  toggleOutline: "editor::ToggleOutline", // show/hide the document outline panel
   pasteAsPlainText: "editor::PasteAsPlainText", // Cmd+Shift+V — insert clipboard as literal text
 
   // grid / task table

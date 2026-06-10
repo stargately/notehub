@@ -318,6 +318,12 @@ button, a, input, select, textarea {
   color: var(--nh-text);
 }
 
+/* ─── Outline panel rows ─── */
+.nh-outline-item:hover {
+  background: var(--nh-accent-subtle);
+  color: var(--nh-text) !important;
+}
+
 /* ─── Drawer slide-in animation ─── */
 @keyframes slideInRight {
   from { transform: translateX(20px); opacity: 0; }
