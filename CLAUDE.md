@@ -85,6 +85,7 @@ notehub/
 | Terminal | portable-pty 0.8 (Rust), @xterm/xterm 5 (frontend) |
 | File Watch | notify 7 + notify-debouncer-full 0.4 (Rust), 300ms coalescing (VS Code-style) |
 | File Index / Trash | `ignore` 0.4 (gitignore-aware Cmd+P walk), `trash` 5 (move-to-Trash delete) |
+| Clipboard | `arboard` 3 (macOS-only native clipboard read for Cmd+Shift+V paste-as-plain-text) |
 | Fuzzy Search | `src/lib/fuzzy.ts` (dependency-free fzy-style matcher) |
 
 ## Commands
@@ -317,9 +318,14 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
   `useUndoHistory`, `DocumentView`, `QaLayout.perf`.
 - **Paste as plain text** (`Cmd+Shift+V`, `src/lib/pm-plain-paste.ts`): a Typora-style plain paste
   for the ProseMirror-backed editors. Because the binding routes through the app keymap, the handler
-  runs from a `keydown` where no native `ClipboardEvent` exists — so it reads `navigator.clipboard.
-  readText()` (async; fails gracefully if the WKWebView rejects) and inserts via a **programmatic
-  `tr.insertText`**. That path bypasses ProseMirror input rules, so the text is literal and
+  runs from a `keydown` where no native `ClipboardEvent` exists — so it reads the clipboard
+  asynchronously and inserts via a **programmatic `tr.insertText`**. The read goes through the
+  **native OS clipboard** (`tauri-api.readClipboardText` → Rust `commands::read_clipboard_text`, using
+  `arboard` on macOS), **not** `navigator.clipboard.readText()`: the WebView clipboard API pops
+  WKWebView's native "Paste" permission button, which would turn the paste into a two-step "click the
+  paste pill" gesture — the native read returns the text directly so it's seamless. (`readClipboardText`
+  falls back to the web clipboard API in browser mode, and returns `""` on any failure.) That
+  `tr.insertText` path bypasses ProseMirror input rules, so the text is literal and
   uninterpreted — pasting `# foo` inserts the characters, never a heading (plain `Cmd+V` keeps the
   formatted, markdown-aware paste). A small module-level **registry** keys each mounted editor by its
   contenteditable; the single handler (`pasteAsPlainText`) captures the **focused** view *synchronously*
@@ -545,6 +551,10 @@ watched recursively so every tree file live-reloads on external edits.
     command** — the frontend calls `@tauri-apps/plugin-opener`'s `revealItemInDir` (`opener:default`).
   - `read_text_file(path)` → file text, or `Err("binary")` for non-text files (NUL-byte heuristic,
     `looks_binary`). Distinct from `read_file` (the markdown editors' path).
+  - `read_clipboard_text()` → the system clipboard's plain text, read **natively** (macOS: `arboard`)
+    so Cmd+Shift+V paste-as-plain-text doesn't trip WKWebView's "Paste" permission button (see *Paste
+    as plain text*). macOS-only (`arboard` lives under `[target.'cfg(target_os = "macos")']` so Linux
+    CI needs no X11 dev headers); a no-op returning `""` elsewhere.
   - `open_workspace_window(folder)` spawns a `workspace-{n}` window (or focuses an existing one via
     `find_window_for_workspace`), recording `label -> canonical(folder)` in
     `AppState.workspace_windows`; the new window fetches its root via `get_window_workspace`.

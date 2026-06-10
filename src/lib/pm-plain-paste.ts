@@ -14,6 +14,8 @@
  * (the handler is registered once per active view, not once per cell).
  */
 
+import { readClipboardText } from "./tauri-api";
+
 /**
  * Minimal structural shape of a ProseMirror `EditorView`. Milkdown and Tiptap each bundle their
  * own copy of `prosemirror-view`, so a nominal import would type-mismatch one of them — but both
@@ -58,10 +60,15 @@ export function insertPlainTextIntoView(view: PmInsertView, text: string): void 
   view.dispatch(view.state.tr.insertText(text).scrollIntoView());
 }
 
-/** Default clipboard reader — `navigator.clipboard.readText()`, or "" when unavailable. */
+/**
+ * Default clipboard reader — the **native** OS clipboard via Rust (`readClipboardText`), not
+ * `navigator.clipboard.readText()`. The web API pops WKWebView's "Paste" permission button, which
+ * would turn Cmd+Shift+V into a two-step "click the paste pill" gesture; the native read returns the
+ * text directly so the paste is seamless. Browser mode falls back to the web API inside
+ * `readClipboardText`. Returns "" when unavailable.
+ */
 async function defaultReadText(): Promise<string> {
-  if (typeof navigator === "undefined" || !navigator.clipboard?.readText) return "";
-  return navigator.clipboard.readText();
+  return readClipboardText();
 }
 
 /**

@@ -35,3 +35,7 @@ trash = "5"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSDocumentController"] }
 objc2-foundation = { version = "0.3", features = ["NSString", "NSURL"] }
+# Native clipboard read (Cmd+Shift+V paste-as-plain-text). macOS-only so Linux CI needs no X11
+# dev headers; reading via the OS avoids WKWebView's "Paste" permission button that
+# `navigator.clipboard.readText()` triggers. See commands::read_clipboard_text.
+arboard = "3"

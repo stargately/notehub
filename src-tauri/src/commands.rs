@@ -196,6 +196,28 @@ pub async fn read_text_file(path: String) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| "binary".to_string())
 }
 
+/// Read the system clipboard's plain text **natively** (the OS clipboard), not the WebView
+/// clipboard API. Calling `navigator.clipboard.readText()` from JS pops WKWebView's native "Paste"
+/// permission button, so Cmd+Shift+V (paste as plain text) would require an extra click; a native
+/// read returns the text directly. Returns `""` when the clipboard holds no text (e.g. an image),
+/// which the frontend treats as "nothing to paste". macOS-only — a no-op elsewhere.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub fn read_clipboard_text() -> Result<String, String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    match clipboard.get_text() {
+        Ok(text) => Ok(text),
+        Err(arboard::Error::ContentNotAvailable) => Ok(String::new()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+pub fn read_clipboard_text() -> Result<String, String> {
+    Ok(String::new())
+}
+
 /// Whether `path` points at a directory — lets the frontend route a dropped path to the
 /// workspace tree (folder) versus a tab (file).
 #[tauri::command]

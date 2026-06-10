@@ -198,6 +198,7 @@ pub fn run() {
             commands::read_dir,
             commands::list_workspace_files,
             commands::read_text_file,
+            commands::read_clipboard_text,
             commands::is_directory,
             commands::canonicalize,
             commands::open_workspace_window,

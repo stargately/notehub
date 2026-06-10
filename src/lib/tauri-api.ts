@@ -135,6 +135,28 @@ export async function readDir(path: string): Promise<DirEntry[]> {
   return invoke<DirEntry[]>("read_dir", { path });
 }
 
+/**
+ * Read the system clipboard's plain text via the **native** (Rust) clipboard rather than the WebView
+ * clipboard API. `navigator.clipboard.readText()` under WKWebView pops a native "Paste" permission
+ * button, so reading it for Cmd+Shift+V would force an extra click; the native read returns the text
+ * directly. Falls back to the web clipboard API in browser mode (non-Tauri). Returns "" on failure.
+ */
+export async function readClipboardText(): Promise<string> {
+  if (!isTauri) {
+    try {
+      return (await navigator.clipboard?.readText?.()) ?? "";
+    } catch {
+      return "";
+    }
+  }
+  try {
+    const invoke = await getInvoke();
+    return await invoke<string>("read_clipboard_text");
+  } catch {
+    return "";
+  }
+}
+
 /** Recursively index every file under `root` for the quick-open finder (gitignore-aware in Rust). */
 export async function listWorkspaceFiles(root: string): Promise<FileEntry[]> {
   if (!isTauri) return [];
