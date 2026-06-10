@@ -218,7 +218,10 @@ Built-in fields have their types inferred automatically — you only need `type`
 ## Workspace Folders & File Tree
 
 Open a whole folder as a project, shown in a VS Code-style **file-tree sidebar** (`Cmd+B` toggles
-it; drag its right edge to resize). Three ways to open a folder:
+it; drag its right edge to resize). Toggling it is smooth — the panel collapses in place without
+flashing the window, your tree scroll + expanded folders survive the toggle, and the editor keeps
+its vertical scroll position even though the document reflows to the new width. Three ways to open a
+folder:
 
 - Click **Open Folder** in the sidebar (the folder button in its header, or the big button when no
   folder is open yet — the sidebar is shown by default).

@@ -40,6 +40,13 @@ interface DocumentViewProps {
   /** Whether this is the active (focused, visible) tab. Gates keymap registration & command publish. */
   active: boolean;
   darkMode: boolean;
+  /**
+   * Sidebar open/closed. Threaded to the editors purely as a width-reflow signal: when it flips, the
+   * document area's width changes and wrapped text reflows, so the editor preserves its scroll
+   * fraction across the toggle (see MarkdownEditor / QaLayout). A resize *drag* changes `sidebarWidth`,
+   * not this boolean, so the editors never fight the drag.
+   */
+  sidebarOpen?: boolean;
   /** Used by Save-As on an untitled doc to point this tab at its new path. */
   setTabs: React.Dispatch<React.SetStateAction<TabInfo[]>>;
   /** Shared, tab-id-keyed undo stacks (survive as long as the tab is open). */
@@ -57,7 +64,7 @@ interface DocumentViewProps {
  * one registers keymap actions/contexts.
  */
 function DocumentViewImpl({
-  tabId, filePath, kind, active, darkMode, setTabs, undoHistory, publishCommands,
+  tabId, filePath, kind, active, darkMode, sidebarOpen, setTabs, undoHistory, publishCommands,
 }: DocumentViewProps) {
   const isRawFile = kind === "raw" || kind === "image";
 
@@ -262,6 +269,7 @@ function DocumentViewImpl({
               onChange={handleEditorChange}
               darkMode={darkMode}
               scrollRef={viewScrollRef}
+              sidebarOpen={sidebarOpen}
               onUndoExhausted={handleUndoExhausted}
               onRedoExhausted={handleRedoExhausted}
             />
@@ -274,6 +282,7 @@ function DocumentViewImpl({
           onToggleEditor={handleToggleViewMode}
           darkMode={darkMode}
           scrollRef={viewScrollRef}
+          sidebarOpen={sidebarOpen}
           fileName={deriveBaseName(filePath)}
           filePath={filePath}
           variant={isQa ? "qa" : "plain"}

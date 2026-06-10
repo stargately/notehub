@@ -47,54 +47,68 @@ export function Sidebar({
     document.addEventListener("mouseup", up);
   };
 
-  if (!open) return null;
-
   const rootName = workspaceRoot
     ? workspaceRoot.split("/").filter(Boolean).pop() ?? workspaceRoot
     : null;
 
+  // Collapse (Cmd+B) by shrinking to width 0 rather than unmounting: tearing a flex child out of
+  // the row and rebuilding it on re-open snaps the document width and flashes the window, and throws
+  // away the tree's scroll + expanded-dir state. Staying mounted keeps that state and avoids the
+  // flash; the inner content is `display:none` while collapsed so it isn't painted or focusable.
   return (
     <div
       className="relative flex flex-col shrink-0 overflow-hidden"
-      style={{ width, background: "var(--nh-bg-elevated)", borderRight: "1px solid var(--nh-border)" }}
+      style={{
+        width: open ? width : 0,
+        background: "var(--nh-bg-elevated)",
+        borderRight: open ? "1px solid var(--nh-border)" : "none",
+      }}
+      aria-hidden={!open}
     >
       <div
-        className="flex items-center gap-2 px-3 h-9 shrink-0 border-b"
-        style={{ borderColor: "var(--nh-border)" }}
+        className="flex flex-col flex-1 min-h-0"
+        style={{ display: open ? undefined : "none" }}
       >
-        <span
-          className="text-[11px] font-semibold uppercase tracking-wide truncate flex-1"
-          style={{ color: "var(--nh-text-secondary)" }}
-          title={workspaceRoot ?? ""}
+        <div
+          className="flex items-center gap-2 px-3 h-9 shrink-0 border-b"
+          style={{ borderColor: "var(--nh-border)" }}
         >
-          {rootName ?? "Explorer"}
-        </span>
+          <span
+            className="text-[11px] font-semibold uppercase tracking-wide truncate flex-1"
+            style={{ color: "var(--nh-text-secondary)" }}
+            title={workspaceRoot ?? ""}
+          >
+            {rootName ?? "Explorer"}
+          </span>
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {workspaceRoot ? (
+            <FileTree
+              ref={treeRef}
+              root={workspaceRoot}
+              activeFilePath={activeFilePath}
+              onOpenFile={onOpenFile}
+              onRenamed={onRenamed}
+              onDeleted={onDeleted}
+            />
+          ) : (
+            <div className="px-3 py-4">
+              <button onClick={onOpenFolder} className="nh-btn-primary w-full">
+                Open Folder
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-auto">
-        {workspaceRoot ? (
-          <FileTree
-            ref={treeRef}
-            root={workspaceRoot}
-            activeFilePath={activeFilePath}
-            onOpenFile={onOpenFile}
-            onRenamed={onRenamed}
-            onDeleted={onDeleted}
-          />
-        ) : (
-          <div className="px-3 py-4">
-            <button onClick={onOpenFolder} className="nh-btn-primary w-full">
-              Open Folder
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div
-        onMouseDown={handleDown}
-        className="absolute top-0 right-0 h-full"
-        style={{ width: 5, cursor: "col-resize" }}
-      />
+      {open && (
+        <div
+          onMouseDown={handleDown}
+          className="absolute top-0 right-0 h-full"
+          style={{ width: 5, cursor: "col-resize" }}
+        />
+      )}
     </div>
   );
 }

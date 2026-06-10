@@ -240,6 +240,7 @@ function App() {
                     kind={tab.kind}
                     active={tab.id === activeTabId}
                     darkMode={darkMode}
+                    sidebarOpen={sidebarOpen}
                     setTabs={setTabs}
                     undoHistory={undoHistory}
                     publishCommands={publishCommands}

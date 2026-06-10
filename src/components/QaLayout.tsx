@@ -46,6 +46,13 @@ interface QaLayoutProps {
   active?: boolean;
   /** Shared scroll-progress fraction carried across a Cmd+/ view toggle (see DocumentView). */
   scrollRef?: MutableRefObject<number | null>;
+  /**
+   * Sidebar open/closed — a width-reflow signal. When it flips the document area's width changes and
+   * the WYSIWYG content rewraps, so the scroll *fraction* is snapshotted + re-applied to hold the
+   * reading position across the toggle (see the layout effect). A resize *drag* changes `sidebarWidth`
+   * (not this), so it never triggers here.
+   */
+  sidebarOpen?: boolean;
 }
 
 interface ParsedState {
@@ -118,7 +125,7 @@ const QaCell = memo(function QaCell({ field, className, value, darkMode, placeho
  */
 export function QaLayout({
   content, onChange, onToggleEditor, darkMode, fileName, filePath,
-  variant = "qa", active = true, scrollRef,
+  variant = "qa", active = true, scrollRef, sidebarOpen,
 }: QaLayoutProps) {
   const [parsed, setParsed] = useState<ParsedState>(() => parse(content));
   // Bumped on EXTERNAL change / replace — used only to re-run the find match collection (the
@@ -227,6 +234,41 @@ export function QaLayout({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Preserve scroll across the width reflow from toggling the sidebar (Cmd+B). Collapsing/expanding
+  // the sidebar changes the document area's width, so the WYSIWYG content rewraps and its height
+  // changes — the same scrollTop would now show different text. We snapshot the scroll *fraction*
+  // here in render (the DOM still holds the pre-toggle layout) and re-apply it across a few frames
+  // once the rewrap settles. Tied to the discrete `sidebarOpen` flip — not a width observer — so a
+  // sidebar-resize *drag* never triggers it.
+  const lastSidebarOpenRef = useRef(sidebarOpen);
+  const reflowFractionRef = useRef<number | null>(null);
+  if (sidebarOpen !== lastSidebarOpenRef.current) {
+    lastSidebarOpenRef.current = sidebarOpen;
+    const el = docRef.current;
+    // Only the visible (active) tab has meaningful layout; skip hidden (display:none) background tabs.
+    if (el && el.offsetParent != null) {
+      reflowFractionRef.current = toFraction(el.scrollTop, el.scrollHeight, el.clientHeight);
+    }
+  }
+  useLayoutEffect(() => {
+    const el = docRef.current;
+    const frac = reflowFractionRef.current;
+    reflowFractionRef.current = null;
+    if (!el || frac == null) return;
+    let raf = 0;
+    let prevHeight = -1;
+    let stable = 0;
+    let frames = 0;
+    const apply = () => {
+      el.scrollTop = fromFraction(frac, el.scrollHeight, el.clientHeight);
+      stable = el.scrollHeight === prevHeight ? stable + 1 : 0;
+      prevHeight = el.scrollHeight;
+      if (stable < 2 && ++frames < 30) raf = requestAnimationFrame(apply);
+    };
+    apply(); // first apply pre-paint, then settle across frames as the rewrap finishes
+    return () => cancelAnimationFrame(raf);
+  }, [sidebarOpen]);
 
   const gotoMatch = (next: number) => {
     const matches = matchesRef.current;

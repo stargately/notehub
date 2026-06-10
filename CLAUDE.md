@@ -116,7 +116,7 @@ npm run fmt:rust:check # cargo fmt -- --check
   `tree-refresh`, `fuzzy`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste` + the keymap engine `keymap/__tests__/`:
   `keystroke`/`context`/`keymap`/`user-keymap`/`provider`), the buffer/sync hooks (`useFileSync`,
   `useProjectFile`, `useViewMode`, `useRawFile`, `useTabManagement`, `useUndoHistory`, `useNativeMenu`),
-  and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`). The load-bearing
+  and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`, `Sidebar`). The load-bearing
   guarantees they lock in: the **loaded-path guard** (one tab's content is never written to another
   file, the editor is never seeded from a stale `projectData`), per-tab edit routing with **no
   cross-write**, the **`React.memo` guarantee** (a parent re-render with unchanged props doesn't
@@ -565,6 +565,24 @@ watched recursively so every tree file live-reloads on external edits.
     adopts the first folder or opens another window.
   - `Sidebar.tsx` + `FileTree.tsx`: resizable panel + lazy recursive tree; clicking a file calls
     `useTabManagement.openPath` (dedupes, focuses).
+  - **`Cmd+B` collapse — no flash, no scroll jump** (`Sidebar.tsx` + the editors): toggling the
+    sidebar **collapses it to `width: 0`** (content `display:none`, resize handle dropped, `aria-hidden`)
+    instead of unmounting it. Tearing a flex child out of the row and rebuilding it snapped the
+    document width, flashed the window, and threw away the tree's scroll + expanded-dir state; staying
+    mounted fixes all three. The complementary half preserves the **active editor's vertical scroll**
+    across the width reflow (the document area widens/narrows, so wrapped text rewraps and content
+    height changes — the same `scrollTop` would show different text). `sidebarOpen` is threaded
+    `App → DocumentView → {MarkdownEditor, QaLayout}` purely as a width-reflow signal: when it flips,
+    each editor snapshots its scroll **fraction** *in render* (the DOM still holds the pre-toggle
+    layout — the same trick `MarkdownEditor` uses for `saveViewState`) and re-applies it across a few
+    frames in a `useLayoutEffect` (an rAF loop until `scrollHeight` stabilizes, as Monaco re-wraps via
+    `automaticLayout` / the QA cells settle) — reusing `lib/scroll-sync.ts` `toFraction`/`fromFraction`
+    (the same helpers as the `Cmd+/` toggle and live-reload). It's tied to the **discrete flip**, not
+    a width `ResizeObserver`, so a sidebar-**resize drag** (which changes `sidebarWidth`, not
+    `sidebarOpen`) never triggers it and the editors don't fight the drag; hidden (`display:none`)
+    background tabs are skipped via an `offsetParent` guard. Tests: `__tests__/Sidebar.test.tsx`
+    (collapse keeps the same node mounted + hides content; handle only while open); the scroll-restore
+    timing is verified manually (needs a live browser + Monaco), like the `Cmd+/` path.
   - **File management** (`FileTree.tsx`): right-click → `ContextMenu` (New File/Folder on dirs,
     Rename, Delete, Reveal in Finder, Copy Path; empty space → New at root). Ops shared with rows via
     a `FileTreeContext` + a folder-handle registry so a create auto-expands/optimistically reloads its

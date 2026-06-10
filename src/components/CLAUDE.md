@@ -72,6 +72,20 @@ two views have very different heights, so a fraction (progress) is used rather t
 The Monaco path needs a live browser, so it's verified manually; the fraction math is unit-tested
 (`__tests__/scroll-sync`).
 
+**Cmd+B sidebar-toggle scroll continuity.** Collapsing/expanding the sidebar changes the document
+area's width, so the active editor's wrapped text reflows and its content height changes — the same
+`scrollTop` would show different text (an apparent y-jump). Unlike `Cmd+/`, the editor doesn't
+unmount, so there's no `viewScrollRef` handoff. Instead `sidebarOpen` is threaded
+`App → DocumentView → {MarkdownEditor, QaLayout}` as a width-reflow signal: when it **flips**, each
+editor snapshots its scroll **fraction** *in render* (DOM still pre-toggle) and re-applies it in a
+`useLayoutEffect` via an rAF-until-`scrollHeight`-stable loop (Monaco re-wraps async via
+`automaticLayout`; QA cells settle over a couple frames) — same `toFraction`/`fromFraction` helpers.
+Tied to the discrete flip (not a width `ResizeObserver`), so a sidebar **resize drag** — which
+changes `sidebarWidth`, not `sidebarOpen` — never triggers it; hidden (`display:none`) background
+tabs are skipped via an `offsetParent` guard. The collapse-not-unmount half (no flash + tree state
+survives) is `Sidebar.tsx`; tested in `__tests__/Sidebar.test.tsx`. Scroll-restore timing is
+verified manually (needs a live browser + Monaco).
+
 ## Per-document header (thin Zed-style title bar)
 
 Every document view renders a thin (~30px) header titled by the **file name**

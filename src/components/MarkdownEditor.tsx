@@ -12,6 +12,12 @@ interface MarkdownEditorProps {
   language?: string;
   /** Shared scroll-progress fraction carried across a Cmd+/ view toggle (see DocumentView). */
   scrollRef?: MutableRefObject<number | null>;
+  /**
+   * Sidebar open/closed — a width-reflow signal. When it flips the editor's width changes, wrapped
+   * lines reflow, and the content height changes, so the same scrollTop would show different text.
+   * We snapshot the scroll *fraction* and re-apply it once the reflow settles (preserves reading pos).
+   */
+  sidebarOpen?: boolean;
   onUndoExhausted?: () => string | null;
   onRedoExhausted?: () => string | null;
 }
@@ -30,7 +36,7 @@ const MONACO_OPTIONS: EditorProps["options"] = {
   padding: { top: 16 },
 };
 
-function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown", scrollRef, onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
+function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown", scrollRef, sidebarOpen, onUndoExhausted, onRedoExhausted }: MarkdownEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const initialVersionRef = useRef<number>(0);
   const editorRef = useRef<MonacoEditor | null>(null);
@@ -67,6 +73,42 @@ function MarkdownEditorImpl({ content, onChange, darkMode, language = "markdown"
     pendingViewStateRef.current = null;
     if (ed && vs) ed.restoreViewState(vs);
   }, [content]);
+
+  // Preserve scroll across the width reflow from toggling the sidebar (Cmd+B). Collapsing/expanding
+  // the sidebar changes this editor's width, so wrapped lines reflow and the content height changes —
+  // the same scrollTop would now show different text. We snapshot the scroll *fraction* here in render
+  // (the DOM still holds the pre-toggle layout) and re-apply it across a few frames in the layout
+  // effect below, once Monaco re-wraps via `automaticLayout`. Tied to the discrete `sidebarOpen` flip
+  // — not a width observer — so a sidebar-resize *drag* never triggers it.
+  const lastSidebarOpenRef = useRef(sidebarOpen);
+  const reflowFractionRef = useRef<number | null>(null);
+  if (sidebarOpen !== lastSidebarOpenRef.current) {
+    lastSidebarOpenRef.current = sidebarOpen;
+    const ed = editorRef.current;
+    // Only the visible (active) tab has meaningful layout; skip hidden (display:none) background tabs.
+    if (ed && containerRef.current?.offsetParent != null) {
+      reflowFractionRef.current = toFraction(ed.getScrollTop(), ed.getScrollHeight(), ed.getLayoutInfo().height);
+    }
+  }
+  useLayoutEffect(() => {
+    const ed = editorRef.current;
+    const frac = reflowFractionRef.current;
+    reflowFractionRef.current = null;
+    if (!ed || frac == null) return;
+    let raf = 0;
+    let prevHeight = -1;
+    let stable = 0;
+    let frames = 0;
+    const apply = () => {
+      ed.setScrollTop(fromFraction(frac, ed.getScrollHeight(), ed.getLayoutInfo().height));
+      const h = ed.getScrollHeight();
+      stable = h === prevHeight ? stable + 1 : 0;
+      prevHeight = h;
+      if (stable < 2 && ++frames < 30) raf = requestAnimationFrame(apply);
+    };
+    apply(); // first apply pre-paint, then settle across frames as Monaco re-wraps
+    return () => cancelAnimationFrame(raf);
+  }, [sidebarOpen]);
 
   const handleChange = useCallback((value: string | undefined) => onChange(value ?? ""), [onChange]);
 
