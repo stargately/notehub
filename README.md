@@ -267,6 +267,12 @@ layout-level toggles in one place:
 
 - **Sidebar** — show/hide the file-tree sidebar (same as `Cmd+B`).
 - **Terminal** — show/hide the integrated terminal (same as `` Ctrl+` ``).
+- **Document stats** (right side) — live **word count**, **character count**, and **estimated
+  reading time** (~200 wpm) for the active document, Typora-style: `1,234 words · 5,678 chars ·
+  ~6 min read`. Updates as you type (debounced) and follows the active tab; blank when no document
+  is open. The counts are honest plain-text counts — markdown syntax, frontmatter, and the Q&A
+  markers are stripped first (code-block *content* still counts), and CJK text is counted per
+  character.
 - **Theme** (right edge) — cycle Light → Dark → System; the label shows the current mode.
 
 Active panels are tinted with the accent color. The current workspace folder name sits next to the

@@ -50,6 +50,7 @@ notehub/
 │   │   ├── tree-refresh.ts     # file-changed → re-read tree dirs (subscribeDir/subscribeAll bus)
 │   │   ├── fuzzy.ts            # fzy-style fuzzy matcher for Cmd+P (pure, unit-tested)
 │   │   ├── outline.ts          # Pure markdown heading parser + DOM-heading matcher (outline/Cmd+Shift+O)
+│   │   ├── doc-stats.ts        # Pure word/char/reading-time stats + the status-bar stats store
 │   │   ├── recent-files.ts    # in-memory MRU for Cmd+P empty-query ordering
 │   │   ├── tear-off.ts        # pure predicate: was a dragged tab released outside the window?
 │   │   ├── keymap/            # Zed-style keymap: keystroke/context/matcher + provider & hooks
@@ -117,11 +118,11 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — tests live in adjacent `__tests__/` dirs. Coverage spans pure
   `src/lib/` modules (`markdown-parser`, `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`,
-  `tree-refresh`, `fuzzy`, `outline`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste` + the keymap engine `keymap/__tests__/`:
+  `tree-refresh`, `fuzzy`, `outline`, `doc-stats`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste` + the keymap engine `keymap/__tests__/`:
   `keystroke`/`context`/`keymap`/`user-keymap`/`default-keymap`/`provider`), the buffer/sync hooks (`useFileSync`,
   `useProjectFile`, `useViewMode`, `useRawFile`, `useTabManagement`, `useUndoHistory`, `useNativeMenu`),
   and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`, `Sidebar`,
-  `OutlinePanel`, `GoToHeading`, `MarkdownEditor`, `DocumentView.outline`). The load-bearing
+  `OutlinePanel`, `GoToHeading`, `MarkdownEditor`, `DocumentView.outline`, `DocumentView.stats`). The load-bearing
   guarantees they lock in: the **loaded-path guard** (one tab's content is never written to another
   file, the editor is never seeded from a stale `projectData`), per-tab edit routing with **no
   cross-write**, the **`React.memo` guarantee** (a parent re-render with unchanged props doesn't
@@ -433,6 +434,23 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
   borderless floating menus lost their elevation in dark mode until mapped to `--nh-shadow-md/lg`.
 - **Status bar**: Zed-style thin bottom bar with the window's layout toggles (sidebar/terminal) +
   theme cycle. See `src/components/CLAUDE.md`.
+- **Doc stats in the status bar** (`src/lib/doc-stats.ts`): live Typora-style **words / chars /
+  reading time (~200 wpm)** for the active document. `computeDocStats` derives an honest plain-text
+  rendering first (frontmatter, fence delimiters, QA markers, and markdown decoration dropped;
+  code-block *content* kept; CJK counted per character — a whitespace tokenizer would call a whole
+  Chinese sentence one word); `formatDocStats` renders the one display string. Wiring mirrors the
+  `DocCommands` single-publisher model but through a tiny **module store**
+  (`publishDocStats`/`subscribeDocStats`/`getDocStats`, the `recent-files`/`tree-refresh` pattern)
+  instead of App state: the active `DocumentView` publishes (computed from `currentBytes`, so it
+  covers qa/plain *and* serialized todo docs; raw/image files publish nothing), `StatusBar`
+  subscribes via `useSyncExternalStore` — so a stats tick while typing re-renders **only the status
+  bar**, never App/Sidebar/TabBar. First publish after activation/load is immediate (no blank bar
+  on tab switch), edits are debounced (300ms); equal publishes are dropped (stable snapshot
+  identity). A seed guard skips the one commit where a raw doc has loaded but `editorContent` isn't
+  seeded yet (it would flash "0 words"); deactivation/unmount publishes `null` (React runs all
+  cleanups before the next tab's effects, so switch ordering is safe). Tests: `doc-stats.test.ts`,
+  the StatusBar store test, and `DocumentView.stats.test.tsx` (immediate-on-load, debounced typing,
+  tab-switch/raw-tab/unmount clearing).
 
 ## Keyboard Shortcuts — the Zed-style keymap
 

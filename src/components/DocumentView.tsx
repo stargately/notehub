@@ -9,6 +9,7 @@ import { useKeymapContext, useKeymapAction } from "../lib/keymap/provider";
 import { CONTEXTS, ACTIONS } from "../lib/keymap/actions";
 import { serializeProjectMd } from "../lib/markdown-parser";
 import { parseOutline, findDomHeadingIndex } from "../lib/outline";
+import { computeDocStats, publishDocStats } from "../lib/doc-stats";
 import { deriveBaseName } from "../lib/print";
 import type { ProjectData, TabInfo, WeekFilter, FileKind, Task } from "../lib/types";
 import type { UndoHistory } from "../hooks/useUndoHistory";
@@ -299,6 +300,40 @@ function DocumentViewImpl({
   };
   const handleExternalChange = useCallback(() => reconcileRef.current(), []);
   useFileWatcher(loadPath, handleExternalChange);
+
+  // ── Live doc stats for the status bar. Only the active tab publishes (the DocCommands model);
+  // the module store (lib/doc-stats.ts) means a stats tick re-renders only StatusBar, not App.
+  // `currentBytes` covers every doc type (raw string for qa/plain, serialized for todo); raw/image
+  // files are self-contained in RawFileEditor and publish nothing. The first publish after
+  // activation/load is immediate (a tab switch shouldn't lag); edits are debounced. ──
+  const statsPublishedRef = useRef(false);
+  // For one commit after a raw doc loads, `editorContent` hasn't been seeded from `rawContent`
+  // yet — publishing then would flash "0 words" before the debounce corrects it. Hold the first
+  // publish until the seed lands. Gated on "not yet published" so a doc the user *empties* later
+  // still updates to 0 (only the initial-load window is treated as unseeded).
+  const seedPending =
+    isRawDoc && !!projectData && editorContent === "" && projectData.rawContent !== "";
+  const statsSource =
+    !isRawFile && projectData && !(seedPending && !statsPublishedRef.current) ? currentBytes : null;
+  useEffect(() => {
+    if (!active || statsSource == null) return;
+    if (!statsPublishedRef.current) {
+      statsPublishedRef.current = true;
+      publishDocStats(computeDocStats(statsSource));
+      return;
+    }
+    const t = setTimeout(() => publishDocStats(computeDocStats(statsSource)), 300);
+    return () => clearTimeout(t);
+  }, [active, statsSource]);
+  useEffect(() => {
+    if (!active) return;
+    // Deactivation/unmount clears the bar. React runs all cleanups before the next commit's
+    // effects, so on a tab switch this null always lands before the incoming tab's publish.
+    return () => {
+      statsPublishedRef.current = false;
+      publishDocStats(null);
+    };
+  }, [active]);
 
   // Raw/image files: RawFileEditor is fully self-contained (own sync + conflict + reload).
   if (isRawFile && filePath) {

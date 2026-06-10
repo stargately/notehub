@@ -9,17 +9,24 @@ column, above it). It's the single home for the window's **layout-level toggles*
 - **Left** (gated on `isTauri`, since these panels are desktop-only): sidebar (file-tree) + terminal
   toggles — active panels tint with the accent color — plus the workspace folder basename as muted
   context.
-- **Right**: the global **theme cycle** (light → dark → system), label shows the current mode.
+- **Right**: the active document's live **stats** (`1,234 words · 5,678 chars · ~6 min read`,
+  Typora-style; hidden when no doc is open), then the global **theme cycle** (light → dark →
+  system), label shows the current mode.
 
 State is owned by `App` and passed down: `toggleSidebar` (`useWorkspace`), a shared `toggleTerminal`
 (also bound to the `` Ctrl+` `` keymap action), and `themeMode`/`cycleThemeMode` (`useDarkMode`).
-Styles: `.nh-statusbar` / `.nh-status-btn` in `styles/globals.css`.
+The **doc stats are the exception** — they update on a typing cadence, so they are *not* App state:
+the active `DocumentView` publishes into the `lib/doc-stats.ts` module store and `StatusBar`
+subscribes via `useSyncExternalStore`, so a stats tick re-renders only this bar (see the root
+CLAUDE.md *Doc stats in the status bar*). Styles: `.nh-statusbar` / `.nh-status-btn` in
+`styles/globals.css`.
 
 This is the **only** theme toggle — the duplicate that used to live in `Toolbar`, `QaLayout`, and the
 editor header was removed (those no longer take `themeMode`/`onCycleTheme`).
 
-Tests: `__tests__/StatusBar.test.tsx` (toggle handler wiring, active tint + `aria-pressed`, and the
-`isTauri` gate that hides the panel toggles in browser mode).
+Tests: `__tests__/StatusBar.test.tsx` (toggle handler wiring, active tint + `aria-pressed`, the
+`isTauri` gate that hides the panel toggles in browser mode, and the stats store subscription —
+shown on publish, live-updated, cleared on a `null` publish).
 
 ## Render performance — memoized editors
 

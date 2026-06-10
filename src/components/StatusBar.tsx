@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from "react";
 import { isTauri } from "../lib/tauri-api";
+import { subscribeDocStats, getDocStats, formatDocStats } from "../lib/doc-stats";
 import { ThemeIcon } from "./ThemeIcon";
 import type { ThemeMode } from "../hooks/useDarkMode";
 
@@ -64,6 +66,10 @@ export function StatusBar({
     ? workspaceRoot.split("/").filter(Boolean).pop() ?? workspaceRoot
     : null;
 
+  // Live stats of the active document (published by its DocumentView, debounced; null with no
+  // doc). Subscribed here — not threaded through App — so a stats tick re-renders only this bar.
+  const docStats = useSyncExternalStore(subscribeDocStats, getDocStats);
+
   return (
     <footer className="nh-statusbar">
       {/* Left: layout panel toggles (sidebar + terminal are Tauri-only panels). */}
@@ -102,7 +108,16 @@ export function StatusBar({
 
       <div className="flex-1" />
 
-      {/* Right: global appearance. */}
+      {/* Right: active-doc stats (Typora-style), then global appearance. */}
+      {docStats && (
+        <span
+          className="shrink-0"
+          style={{ color: "var(--nh-text-tertiary)", marginRight: 8 }}
+          title="Word count · characters · reading time (~200 wpm)"
+        >
+          {formatDocStats(docStats)}
+        </span>
+      )}
       <button
         type="button"
         className="nh-status-btn"

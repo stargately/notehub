@@ -11,6 +11,8 @@ vi.mock("../../lib/tauri-api", () => ({
 }));
 
 import { StatusBar } from "../StatusBar";
+import { publishDocStats } from "../../lib/doc-stats";
+import { act } from "@testing-library/react";
 
 type Props = Parameters<typeof StatusBar>[0];
 
@@ -31,6 +33,7 @@ function setup(overrides: Partial<Props> = {}) {
 
 beforeEach(() => {
   tauriEnabled = true;
+  publishDocStats(null);
 });
 
 describe("StatusBar", () => {
@@ -78,5 +81,20 @@ describe("StatusBar", () => {
     expect(screen.queryByTitle(/terminal/i)).toBeNull();
     expect(screen.getByTitle(/^Theme:/)).toBeTruthy();
     expect(screen.getByText("light")).toBeTruthy();
+  });
+
+  it("shows the active doc's stats from the store and clears them on a null publish", () => {
+    setup();
+    // Blank until a document publishes (welcome/no-doc state).
+    expect(screen.queryByText(/words/)).toBeNull();
+
+    act(() => publishDocStats({ words: 1234, chars: 5678, readingMinutes: 6 }));
+    expect(screen.getByText("1,234 words · 5,678 chars · ~6 min read")).toBeTruthy();
+
+    act(() => publishDocStats({ words: 1235, chars: 5681, readingMinutes: 6 }));
+    expect(screen.getByText(/^1,235 words/)).toBeTruthy(); // live update
+
+    act(() => publishDocStats(null)); // last tab closed → blank again
+    expect(screen.queryByText(/words/)).toBeNull();
   });
 });
