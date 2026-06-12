@@ -34,6 +34,13 @@ export function useViewMode({
   const viewMode = viewModeMap[activeTabId] ?? "grid";
   const editorContent = editorContentMap[activeTabId] ?? "";
 
+  // Freshest buffer for this tab, updated synchronously on every edit (state commits lag a tick).
+  // Disk reconciliation reads through this: a watcher event can land between a keystroke and its
+  // React commit, when `editorContent` state is still a keystroke behind — comparing disk against
+  // that stale buffer would misclassify a genuine local edit as "not editing" and live-reload over it.
+  const editorContentRef = useRef(editorContent);
+  editorContentRef.current = editorContent;
+
   // `projectData` belongs to `activeFilePath` only once the load for this tab has landed.
   // Until then (mid tab-switch, or the null-path template window) it still holds the previous
   // file's data, so we must not seed this tab's editor from it nor write it back to disk.
@@ -101,6 +108,7 @@ export function useViewMode({
       // persisting it would drift one file's content onto another. Untitled docs (no path)
       // still flow through so their in-memory buffer updates.
       if (activeFilePath && !synced) return;
+      editorContentRef.current = content; // keep the reconcile-time view of the buffer fresh
       setEditorContent(content);
       if (!activeFilePath) return;
       // Pass `content` so a WYSIWYG re-emit of the on-disk bytes doesn't flag the buffer dirty
@@ -186,7 +194,7 @@ export function useViewMode({
   }, []);
 
   return {
-    viewMode, editorContent,
+    viewMode, editorContent, editorContentRef,
     handleToggleViewMode, handleEditorChange, handleSave,
   };
 }

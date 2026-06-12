@@ -28,9 +28,27 @@ export interface FileConflict {
 export function useFileSync() {
   const baselineRef = useRef<Map<string, string>>(new Map());
   const dirtyRef = useRef<Map<string, boolean>>(new Map());
+  // Paths with one of our own `writeFile`s currently in flight. While a write is mid-air, disk
+  // still holds the OLD bytes but `baseline` already points at the NEW content (set before the
+  // await so the write's own watcher event is recognized as an echo). A reconcile running in that
+  // window would see `disk !== baseline` and misread our half-landed write as an external change —
+  // live-reloading stale disk content into the editor, which remounts the WYSIWYG cell (scroll
+  // jumps to the top) and reverts just-typed text. Reconcile skips while a write is in flight.
+  const writesInFlightRef = useRef<Map<string, number>>(new Map());
   const [conflict, setConflict] = useState<FileConflict | null>(null);
   const conflictRef = useRef<FileConflict | null>(null);
   conflictRef.current = conflict;
+
+  const beginWrite = useCallback((path: string) => {
+    const m = writesInFlightRef.current;
+    m.set(path, (m.get(path) ?? 0) + 1);
+  }, []);
+  const endWrite = useCallback((path: string) => {
+    const m = writesInFlightRef.current;
+    const n = (m.get(path) ?? 0) - 1;
+    if (n > 0) m.set(path, n);
+    else m.delete(path);
+  }, []);
 
   /** Record that `path` now holds `content` both on disk and in memory (load or save). */
   const markLoaded = useCallback((path: string, content: string) => {
@@ -79,7 +97,12 @@ export function useFileSync() {
       disk = await readFile(path);
     } catch {
       // Can't read (e.g. file deleted) — fall back to a plain write.
-      await writeFile(path, content);
+      beginWrite(path);
+      try {
+        await writeFile(path, content);
+      } finally {
+        endWrite(path);
+      }
       baselineRef.current.set(path, content);
       dirtyRef.current.set(path, false);
       return true;
@@ -92,25 +115,42 @@ export function useFileSync() {
     // Set baseline before awaiting the write so the watcher event for our own write
     // (which may arrive before this promise resolves) is recognised as an echo.
     baselineRef.current.set(path, content);
-    await writeFile(path, content);
+    beginWrite(path);
+    try {
+      await writeFile(path, content);
+    } finally {
+      endWrite(path);
+    }
     dirtyRef.current.set(path, false);
     return true;
-  }, []);
+  }, [beginWrite, endWrite]);
 
   /**
    * Handle an external `file-changed` event. `mine` is the bytes we would write right
-   * now (for the dirty-conflict case); `applyReload` re-reads and re-parses the file
+   * now (for the dirty-conflict case) — pass a getter where possible: the disk read below is
+   * async (and the watcher event may land between a keystroke and its React commit), so a plain
+   * string can already be a keystroke stale by the time it's compared; a getter is evaluated
+   * after the read, against the freshest buffer. `applyReload` re-reads and re-parses the file
    * into the active view (for the clean live-reload case).
    */
   const reconcile = useCallback(
-    async (path: string, mine: string, applyReload: () => void) => {
+    async (path: string, mineSource: string | (() => string), applyReload: () => void) => {
       if (conflictRef.current) return; // already resolving a conflict
+      // One of our own writes is mid-air: disk is half-transitioned while baseline already points
+      // at the new content, so comparing now would misread our own write as an external change and
+      // live-reload stale disk content (remounting the editor → scroll jump + reverted typing).
+      // Skip — the write's own watcher event re-runs reconcile once disk has settled (the
+      // debouncer coalesces events but never drops them).
+      if (writesInFlightRef.current.has(path)) return;
       let disk: string;
       try {
         disk = await readFile(path);
       } catch {
         return;
       }
+      // The read was async — re-check in case a write started while it was in flight.
+      if (writesInFlightRef.current.has(path)) return;
+      const mine = typeof mineSource === "function" ? mineSource() : mineSource;
       const baseline = baselineRef.current.get(path);
       if (disk === baseline) return; // our own echo / no real change
       // Content-truthful convergence check: if the in-memory buffer already equals the new disk
@@ -164,11 +204,16 @@ export function useFileSync() {
     dirtyRef.current.set(c.path, false);
     setConflict(null);
     try {
-      await writeFile(c.path, c.mine);
+      beginWrite(c.path);
+      try {
+        await writeFile(c.path, c.mine);
+      } finally {
+        endWrite(c.path);
+      }
     } catch {
       /* surfaced by callers' own save-error toasts */
     }
-  }, []);
+  }, [beginWrite, endWrite]);
 
   return {
     conflict,

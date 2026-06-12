@@ -222,6 +222,85 @@ describe("useFileSync reconciliation", () => {
     expect(result.current.conflict).toBeNull();
   });
 
+  it("ignores a watcher event that lands while our own write is in flight (no reload, no remount)", async () => {
+    // The scroll-jump regression: `guardedWrite` sets the baseline BEFORE awaiting the write (so
+    // the write's own event reads as an echo), which opens a window where disk holds the old bytes
+    // but baseline holds the new ones. A watcher event from a PREVIOUS write landing in that window
+    // used to read disk !== baseline, pass the `mine === baseline` check, and live-reload the STALE
+    // disk content — remounting the WYSIWYG editor (scroll to top) and reverting just-typed text.
+    diskContent = "A";
+    const { result } = renderHook(() => useFileSync());
+    act(() => result.current.markLoaded(PATH, "A"));
+
+    // Make the write hang so we can interleave a reconcile mid-flight.
+    let finishWrite!: () => void;
+    writeFileMock.mockImplementationOnce(
+      (_path: string, content: string) =>
+        new Promise<void>((resolve) => {
+          finishWrite = () => {
+            diskContent = content;
+            resolve();
+          };
+        })
+    );
+
+    let writePromise!: Promise<boolean>;
+    await act(async () => {
+      writePromise = result.current.guardedWrite(PATH, "B");
+      // Let guardedWrite's pre-read resolve and the (hanging) writeFile start.
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(diskContent).toBe("A"); // write still in flight
+
+    const applyReload = vi.fn();
+    await act(async () => {
+      await result.current.reconcile(PATH, "B", applyReload); // watcher event mid-write
+    });
+    expect(applyReload).not.toHaveBeenCalled(); // no stale-disk reload
+    expect(result.current.conflict).toBeNull();
+
+    await act(async () => {
+      finishWrite();
+      await writePromise;
+    });
+    expect(diskContent).toBe("B");
+
+    // The write's own follow-up event is a clean echo (baseline survived untouched)…
+    await act(async () => {
+      await result.current.reconcile(PATH, "B", applyReload);
+    });
+    expect(applyReload).not.toHaveBeenCalled();
+    expect(result.current.conflict).toBeNull();
+
+    // …and a later genuine external change still live-reloads (the guard cleared).
+    diskContent = "EXTERNAL";
+    await act(async () => {
+      await result.current.reconcile(PATH, "B", applyReload);
+    });
+    expect(applyReload).toHaveBeenCalledTimes(1);
+    expect(result.current.conflict).toBeNull();
+  });
+
+  it("accepts a getter for `mine`, evaluated after the disk read (freshest buffer wins)", async () => {
+    // A watcher event can land between a keystroke and its React commit; passing a getter lets
+    // reconcile see the post-keystroke buffer. Here the buffer diverges from baseline AND disk by
+    // the time the getter runs → a genuine conflict (not a silent reload over the user's edit).
+    diskContent = "A";
+    const { result } = renderHook(() => useFileSync());
+    act(() => result.current.markLoaded(PATH, "A"));
+    act(() => result.current.markDirty(PATH, "A typed"));
+
+    diskContent = "EXTERNAL";
+    const applyReload = vi.fn();
+    await act(async () => {
+      await result.current.reconcile(PATH, () => "A typed", applyReload);
+    });
+    expect(applyReload).not.toHaveBeenCalled();
+    expect(result.current.conflict).toEqual({ path: PATH, disk: "EXTERNAL", mine: "A typed" });
+  });
+
   it("resolveKeepDisk discards local edits and reloads", async () => {
     diskContent = "A";
     const { result } = renderHook(() => useFileSync());

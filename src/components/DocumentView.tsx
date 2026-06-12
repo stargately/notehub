@@ -140,7 +140,7 @@ function DocumentViewImpl({
   } = useProjectFile(isRawFile ? null : filePath, onBeforeSave, onDataLoaded, fileSync);
 
   const {
-    viewMode, editorContent,
+    viewMode, editorContent, editorContentRef,
     handleToggleViewMode, handleEditorChange, handleSave,
   } = useViewMode({
     activeTabId: tabId, activeFilePath: filePath, projectData, loadedPath,
@@ -296,7 +296,12 @@ function DocumentViewImpl({
     : "";
   const reconcileRef = useRef<() => void>(() => {});
   reconcileRef.current = () => {
-    if (loadPath) fileSync.reconcile(loadPath, currentBytes, loadFile);
+    if (!loadPath) return;
+    // `mine` is a getter: reconcile's disk read is async, and a watcher event can land between a
+    // keystroke and its React commit — `editorContentRef` is updated synchronously on edit, so the
+    // comparison sees the freshest buffer instead of one a keystroke behind (which would misread a
+    // genuine local edit as "not editing" and live-reload over it, remounting the editor).
+    fileSync.reconcile(loadPath, () => (isRawDoc ? editorContentRef.current : currentBytes), loadFile);
   };
   const handleExternalChange = useCallback(() => reconcileRef.current(), []);
   useFileWatcher(loadPath, handleExternalChange);

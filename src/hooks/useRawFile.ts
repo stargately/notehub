@@ -50,6 +50,7 @@ export function useRawFile(filePath: string, sync: FileSync) {
       // Ignore edits until this file's content has actually loaded for `filePath` (mid
       // tab-switch the editor still shows the previous file) — writing now would drift.
       if (loadedPathRef.current !== filePath) return;
+      contentRef.current = next; // keep the reconcile-time view of the buffer fresh
       setContent(next);
       // Pass `next` so an editor re-emit of the on-disk bytes isn't treated as a real edit. When
       // it isn't a real edit, cancel any pending write and skip scheduling — a stale write that
@@ -71,9 +72,10 @@ export function useRawFile(filePath: string, sync: FileSync) {
     [filePath, sync],
   );
 
-  // Reconcile external changes to this file (clean → reload, dirty → conflict).
+  // Reconcile external changes to this file (clean → reload, dirty → conflict). `mine` is a
+  // getter so reconcile compares against the freshest buffer after its async disk read.
   const handleExternal = useCallback(() => {
-    sync.reconcile(filePath, contentRef.current, load);
+    sync.reconcile(filePath, () => contentRef.current, load);
   }, [filePath, sync, load]);
   useFileWatcher(filePath, handleExternal);
 
