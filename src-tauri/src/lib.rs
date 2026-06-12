@@ -11,7 +11,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
+use tauri::{AppHandle, Manager};
 
 #[derive(Clone, Default)]
 pub struct InitialSession {
@@ -267,6 +269,8 @@ pub fn run() {
         .expect("error building NoteHub");
 
     app.run(|app_handle, event| {
+        // `RunEvent::Opened` exists only on macOS/iOS in tauri.
+        #[cfg(target_os = "macos")]
         if let tauri::RunEvent::Opened { urls } = event {
             // Files opened via Finder / dropped on the Dock icon. Directories open as a
             // workspace (file tree); markdown files open as tabs.
@@ -294,6 +298,8 @@ pub fn run() {
                 let _ = app_handle.emit("open-folder", folder);
             }
         }
+        #[cfg(not(target_os = "macos"))]
+        let _ = (app_handle, event);
     });
 }
 

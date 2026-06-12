@@ -20,16 +20,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: yarn
 
+      # Lock files are gitignored in this repo, so install without one
+      # (setup-node's cache also requires a committed lock file).
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: npm install
 
       - name: Unit tests
-        run: yarn test:js
+        run: npm run test:js
 
       - name: Type-check + build
-        run: yarn build
+        run: npm run build
 
   rust:
     name: Backend (fmt + clippy + cargo test)
