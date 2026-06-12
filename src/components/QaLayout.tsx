@@ -42,7 +42,7 @@ interface QaLayoutProps {
    * Only affects presentation (badge text); the edit/save path is identical.
    */
   variant?: "qa" | "plain";
-  /** Whether this doc's tab is active — gates its keymap shortcuts (Cmd+F find, Cmd+Shift+P print). */
+  /** Whether this doc's tab is active — gates its keymap shortcuts (Cmd+F find, Cmd+Shift+E print). */
   active?: boolean;
   /** Outline panel visibility + toggle (owned by DocumentView); button hidden when not provided. */
   outlineOpen?: boolean;
@@ -179,7 +179,7 @@ export function QaLayout({
     clearHighlights();
   };
 
-  // Cmd+Shift+P prints; Cmd+F opens the find bar (suppressing the broken WKWebView native find).
+  // Cmd+Shift+E prints; Cmd+F opens the find bar (suppressing the broken WKWebView native find).
   // Both are dispatched by the global keymap while the QA editor is the active context.
   useKeymapAction(ACTIONS.print, () => printRef.current(), active);
   useKeymapAction(ACTIONS.find, () => {
@@ -399,7 +399,7 @@ export function QaLayout({
         <button
           onClick={() => printRef.current()}
           className="nh-icon-btn"
-          title={`Print cheatsheet (${IS_MAC ? "⌘⇧P" : "Ctrl+Shift+P"})`}
+          title={`Print cheatsheet (${IS_MAC ? "⌘⇧E" : "Ctrl+Shift+E"})`}
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" />

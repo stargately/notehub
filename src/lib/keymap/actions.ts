@@ -11,6 +11,7 @@ export const ACTIONS = {
   activateTab: "workspace::ActivateTab", // arg: 0-based tab index
   closeTab: "workspace::CloseTab", // close active tab; closes the window when no tabs remain
   openKeymap: "app::OpenKeymap",
+  openCommandPalette: "app::OpenCommandPalette", // Cmd+Shift+P — fuzzy action runner (Zed-style)
 
   // editor / document
   save: "editor::Save",

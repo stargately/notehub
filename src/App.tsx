@@ -17,6 +17,7 @@ import { StatusBar } from "./components/StatusBar";
 import { useNativeMenu } from "./hooks/useNativeMenu";
 import type { FileTreeHandle } from "./components/FileTree";
 import { QuickOpen } from "./components/QuickOpen";
+import { CommandPalette } from "./components/CommandPalette";
 import { KeybindingsHelp } from "./components/KeybindingsHelp";
 import { DocumentView, type DocCommands } from "./components/DocumentView";
 import { WelcomePane } from "./components/WelcomePane";
@@ -26,6 +27,7 @@ function App() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [terminalMounted, setTerminalMounted] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [keymapHelpOpen, setKeymapHelpOpen] = useState(false);
 
   const { darkMode, themeMode, cycleThemeMode } = useDarkMode();
@@ -124,6 +126,7 @@ function App() {
 
   // ── Global (workspace-level) keymap actions. Per-doc actions delegate to the active tab. ──
   useKeymapAction(ACTIONS.quickOpen, () => setQuickOpenOpen(true));
+  useKeymapAction(ACTIONS.openCommandPalette, () => setCommandPaletteOpen(true));
   useKeymapAction(ACTIONS.openFile, () => void handleAddTab());
   useKeymapAction(ACTIONS.toggleSidebar, () => toggleSidebar());
   useKeymapAction(ACTIONS.toggleTerminal, toggleTerminal);
@@ -185,6 +188,10 @@ function App() {
         ensureIndex={ensureIndex}
         onOpenFile={openPath}
         onOpenFolder={openFolder}
+      />
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
       />
       <KeybindingsHelp open={keymapHelpOpen} onClose={() => setKeymapHelpOpen(false)} />
       <div className="flex-1 flex flex-row overflow-hidden">

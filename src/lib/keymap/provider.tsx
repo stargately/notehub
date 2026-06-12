@@ -30,6 +30,13 @@ interface KeymapApi {
   pushContext: (name: string) => () => void;
   /** Snapshot of the currently-active context names (for the keybindings viewer / debugging). */
   getActiveContexts: () => string[];
+  /** Snapshot of the action names that currently have a registered handler (command palette). */
+  getRegisteredActions: () => string[];
+  /**
+   * Dispatch an action programmatically through the same focused-handler stack as a keypress
+   * (the command palette's run path). Returns whether a handler ran.
+   */
+  performAction: (action: string, arg?: unknown) => boolean;
   /** Default + user blocks merged, for display in the keybindings viewer. */
   mergedKeymap: Keymap;
   defaultKeymap: Keymap;
@@ -102,6 +109,16 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const getRegisteredActions = useCallback(() => [...handlers.current.keys()], []);
+
+  const performAction = useCallback((action: string, arg?: unknown): boolean => {
+    const stack = handlers.current.get(action);
+    const top = stack && stack[stack.length - 1];
+    if (!top) return false;
+    top.current(arg);
+    return true;
+  }, []);
+
   const setUserKeymapText = useCallback((text: string): string | null => {
     const { keymap, error } = parseUserKeymap(text);
     if (error) return error;
@@ -171,6 +188,8 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
       registerAction,
       pushContext,
       getActiveContexts,
+      getRegisteredActions,
+      performAction,
       mergedKeymap,
       defaultKeymap: DEFAULT_KEYMAP,
       userKeymapText,
@@ -178,7 +197,7 @@ export function KeymapProvider({ children }: { children: ReactNode }) {
       resetUserKeymap,
       isMac,
     }),
-    [registerAction, pushContext, getActiveContexts, mergedKeymap, userKeymapText, setUserKeymapText, resetUserKeymap, isMac],
+    [registerAction, pushContext, getActiveContexts, getRegisteredActions, performAction, mergedKeymap, userKeymapText, setUserKeymapText, resetUserKeymap, isMac],
   );
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;

@@ -15,6 +15,7 @@ export const DEFAULT_KEYMAP: Keymap = [
     context: "Workspace",
     bindings: {
       "mod-p": "file::QuickOpen",
+      "mod-shift-p": "app::OpenCommandPalette",
       "mod-o": "file::Open",
       "mod-b": "workspace::ToggleSidebar",
       "mod-`": "workspace::ToggleTerminal",
@@ -50,7 +51,8 @@ export const DEFAULT_KEYMAP: Keymap = [
     // for these docs in the raw Monaco view too, so Cmd+Shift+O works in both modes.
     context: "QA",
     bindings: {
-      "mod-shift-p": "editor::Print",
+      // Print moved off mod-shift-p when that became the command palette (Zed parity).
+      "mod-shift-e": "editor::Print",
       "mod-f": "editor::Find",
       "mod-shift-v": "editor::PasteAsPlainText", // into the focused Milkdown cell
       "mod-shift-o": "editor::GoToSymbol",

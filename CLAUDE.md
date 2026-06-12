@@ -26,6 +26,7 @@ notehub/
 │   │   ├── Sidebar.tsx         # Collapsible, resizable workspace file-tree panel (header = folder name)
 │   │   ├── FileTree.tsx        # Lazy recursive tree + right-click ops & inline create/rename
 │   │   ├── QuickOpen.tsx       # Cmd+P fuzzy file finder overlay (gitignore-aware index)
+│   │   ├── CommandPalette.tsx  # Cmd+Shift+P fuzzy action runner over the keymap (Zed-style)
 │   │   ├── OutlinePanel.tsx    # Right-docked document outline (headings, click to scroll-to)
 │   │   ├── GoToHeading.tsx     # Cmd+Shift+O fuzzy go-to-heading overlay (QuickOpen pattern)
 │   │   ├── ContextMenu.tsx     # Shared floating menu (FileTree right-click, TabBar)
@@ -119,10 +120,10 @@ npm run fmt:rust:check # cargo fmt -- --check
 - **Frontend (`vitest`, jsdom)** — tests live in adjacent `__tests__/` dirs. Coverage spans pure
   `src/lib/` modules (`markdown-parser`, `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`,
   `tree-refresh`, `fuzzy`, `outline`, `doc-stats`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste` + the keymap engine `keymap/__tests__/`:
-  `keystroke`/`context`/`keymap`/`user-keymap`/`default-keymap`/`provider`), the buffer/sync hooks (`useFileSync`,
+  `keystroke`/`context`/`keymap`/`user-keymap`/`default-keymap`/`provider`/`commands`), the buffer/sync hooks (`useFileSync`,
   `useProjectFile`, `useViewMode`, `useRawFile`, `useTabManagement`, `useUndoHistory`, `useNativeMenu`),
   and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`, `Sidebar`,
-  `OutlinePanel`, `GoToHeading`, `MarkdownEditor`, `DocumentView.outline`, `DocumentView.stats`). The load-bearing
+  `OutlinePanel`, `GoToHeading`, `CommandPalette`, `MarkdownEditor`, `DocumentView.outline`, `DocumentView.stats`). The load-bearing
   guarantees they lock in: the **loaded-path guard** (one tab's content is never written to another
   file, the editor is never seeded from a stale `projectData`), per-tab edit routing with **no
   cross-write**, the **`React.memo` guarantee** (a parent re-render with unchanged props doesn't
@@ -474,14 +475,21 @@ remap anything via **File → Keyboard Shortcuts…** (`KeybindingsHelp.tsx`). D
   vs `editor::Find`). Pressing `Cmd+F` again while open re-focuses + selects its input (browser-like)
   via a `findFocusTick` `QaFindBar` keys on (`setFindOpen(true)` alone wouldn't re-focus).
 - `Cmd+P` — Quick-open fuzzy file finder (`QuickOpen.tsx`). `mod-p` binds with `shift` off, so
-  `Cmd+Shift+P` (print) is a distinct binding.
+  `Cmd+Shift+P` (command palette) is a distinct binding.
+- `Cmd+Shift+P` — **Command palette** (`app::OpenCommandPalette`, `CommandPalette.tsx`), Zed's
+  muscle-memory key: a fuzzy finder over every currently-runnable command (titled in
+  `keymap/commands.ts` + handler registered), each row showing the keybinding that would fire it
+  under the active contexts (verified through the real resolver, so a shadowed/unbound key shows
+  nothing). Enter dispatches via `performAction` — the same focused-handler stack as a keypress —
+  after restoring focus to the pre-palette element so focus-sensitive handlers target the editor.
+  Bound globally (Workspace context); **Print moved to `Cmd+Shift+E`** to free the key.
 - `Cmd+Shift+O` — Go to heading (`editor::GoToSymbol`, Zed's "Go to Symbol"): a fuzzy finder over
   the active doc's outline (`GoToHeading.tsx`). Bound in the `QA` and `Editor` contexts (every
   markdown view); Monaco bridges it like `Cmd+/` since its own Go-to-Symbol would eat it. The
   companion outline panel (`editor::ToggleOutline`, no default binding) toggles via the header's
   outline icon. See *Document outline* under Architecture Notes.
 - `Cmd+O` — Open a file via the OS dialog (`file::Open` → `handleAddTab`).
-- `Cmd+Shift+P` — Print the `layout: qa` doc (compact cheatsheet, letter, two columns + diagrams).
+- `Cmd+Shift+E` — Print the `layout: qa` doc (compact cheatsheet, letter, two columns + diagrams).
   WKWebView has no working `window.print()`, so `src/lib/print.ts` renders the markdown to
   self-contained HTML (via `marked` + light-theme mermaid) and the Rust `print_html` command writes it
   to a temp file opened in the default browser. The doc `<title>` and temp basename are both the source
@@ -514,11 +522,20 @@ A small Zed-inspired engine, split into pure (unit-tested) modules + a React lay
 - **`actions.ts`** (`ACTIONS`, `CONTEXTS` constants), **`default-keymap.ts`** (the single source of
   truth for default bindings), **`user-keymap.ts`** (localStorage `nh-keymap` JSON, parsed +
   validated, layered after defaults).
+- **`commands.ts`** — command-palette metadata: `COMMAND_TITLES` (friendly names; arg-carrying
+  `ActivateTab` and the palette itself are intentionally untitled, which excludes them) +
+  `paletteCommands(keymap, activeContexts, registeredActions)`, the pure row builder. Each row's
+  displayed keystroke is **verified by replaying it through `resolve`** (with `mod` concretized to
+  Meta), so an unbound, shadowed, or inactive-context binding shows no key rather than a lie; a
+  user remap (later-declared) is preferred for display.
 - **`provider.tsx`** — `KeymapProvider` (wraps the app in `main.tsx`) hosts the one window `keydown`
   dispatcher: builds the active context set (+ always `Workspace`), buffers chords with a timeout,
   resolves, and calls the **most-recently-registered** handler (the focused view). Hooks:
   `useKeymapAction(name, handler, enabled = true)` (focused/last wins via a stack; `enabled = false`
-  skips registration), `useKeymapContext(name, active)`, `useKeymapApi()`. Decoupling key→action
+  skips registration), `useKeymapContext(name, active)`, `useKeymapApi()`. The API also exposes
+  `getRegisteredActions()` (snapshot of handler-bearing action names) and
+  `performAction(action, arg?)` (programmatic dispatch through the same focused-handler stack as a
+  keypress) — the command palette's list + run paths. Decoupling key→action
   (keymap) from action→handler (registry) is the Zed model — `App` owns workspace actions (quick-open,
   open, sidebar/terminal toggles, tab switching, close-tab) and delegates per-document actions
   (save/reload/toggle-raw/undo/redo) to the active tab's `DocCommands`. Since **every tab's

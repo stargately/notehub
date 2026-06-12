@@ -131,7 +131,7 @@ just like Typora's "Paste as Plain Text". Plain `Cmd+V` keeps its formatted, mar
 Press `Cmd+F` to open the find & replace bar — it searches the whole document (header
 plus every question/answer column), highlights matches, navigates with `Enter` /
 `Shift+Enter`, and can replace the current match or all of them. `Esc` closes it.
-Press `Cmd+Shift+P` (or the **Print** button) to print the document as a compact, cheatsheet-style
+Press `Cmd+Shift+E` (or the **Print** button) to print the document as a compact, cheatsheet-style
 handout on letter-size pages — the two-column layout and mermaid diagrams are preserved. When
 you "Save as PDF", the default file name matches the source markdown file.
 
@@ -307,6 +307,15 @@ filter by name or path (matched characters are highlighted), use `↑`/`↓` to 
 open, `Esc` to dismiss. With an empty query it lists your open and recently-opened files. The index
 is **gitignore-aware** (like Zed): files matched by `.gitignore`/`.ignore` are excluded.
 
+### Command palette (`Cmd+Shift+P`)
+
+Press `Cmd+Shift+P` for a Zed/VS Code-style **command palette** — a fuzzy finder over every command
+currently available, each shown with its live keyboard shortcut (a remapped binding shows your key).
+Type to filter, `Enter` runs the selected command exactly as if you'd pressed its shortcut, `Esc`
+dismisses. Commands whose shortcut only works in a specific view (say, **Find & Replace** in the
+markdown editor) list without a key when that view isn't active, but still run against the focused
+document. Print moved to `Cmd+Shift+E` to free this binding (matching Zed's palette key).
+
 ## Integrated Terminal
 
 Press `Ctrl+`` `` to toggle a VS Code-style terminal panel at the bottom of the app. The terminal opens in the active file's directory and persists its session when hidden. Requires the desktop app (Tauri).
@@ -362,7 +371,8 @@ The defaults:
 | `Cmd+Shift+V` | Paste as plain text — insert the clipboard as literal, unformatted text (Typora-style) in the WYSIWYG editors |
 | `Cmd+P` | Quick-open: fuzzy file finder over the workspace |
 | `Cmd+Shift+O` | Go to heading: fuzzy finder over the active doc's outline |
-| `Cmd+Shift+P` | Print the QA doc (compact cheatsheet, letter size) |
+| `Cmd+Shift+P` | Command palette: fuzzy runner over every available command (Zed-style) |
+| `Cmd+Shift+E` | Print the QA doc (compact cheatsheet, letter size) |
 | `Cmd+B` | Toggle the workspace file-tree sidebar |
 | `Cmd+1-9` | Switch tabs |
 | `Cmd+W` | Close the active tab (closes the window when no tabs remain, Zed/VS Code-style) |

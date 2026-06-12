@@ -40,7 +40,7 @@ describe("DEFAULT_KEYMAP — go-to-heading (Cmd+Shift+O)", () => {
     });
   });
 
-  it("stays distinct from its modifier neighbors (Cmd+O open, Cmd+Shift+P print)", () => {
+  it("stays distinct from its modifier neighbors (Cmd+O open, Cmd+Shift+P palette)", () => {
     expect(press("cmd-o", CONTEXTS.qa)).toEqual({
       kind: "action",
       action: ACTIONS.openFile,
@@ -48,8 +48,38 @@ describe("DEFAULT_KEYMAP — go-to-heading (Cmd+Shift+O)", () => {
     });
     expect(press("cmd-shift-p", CONTEXTS.qa)).toEqual({
       kind: "action",
+      action: ACTIONS.openCommandPalette,
+      arg: undefined,
+    });
+  });
+});
+
+describe("DEFAULT_KEYMAP — command palette (Cmd+Shift+P) and print (Cmd+Shift+E)", () => {
+  it("Cmd+Shift+P opens the command palette in every context", () => {
+    for (const ctxs of [[], [CONTEXTS.grid], [CONTEXTS.qa], [CONTEXTS.editor]]) {
+      expect(press("cmd-shift-p", ...ctxs)).toEqual({
+        kind: "action",
+        action: ACTIONS.openCommandPalette,
+        arg: undefined,
+      });
+    }
+  });
+
+  it("stays distinct from Cmd+P quick-open", () => {
+    expect(press("cmd-p")).toEqual({
+      kind: "action",
+      action: ACTIONS.quickOpen,
+      arg: undefined,
+    });
+  });
+
+  it("Cmd+Shift+E prints, only in the QA context", () => {
+    expect(press("cmd-shift-e", CONTEXTS.qa)).toEqual({
+      kind: "action",
       action: ACTIONS.print,
       arg: undefined,
     });
+    expect(press("cmd-shift-e").kind).toBe("none");
+    expect(press("cmd-shift-e", CONTEXTS.grid).kind).toBe("none");
   });
 });
