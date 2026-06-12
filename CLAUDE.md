@@ -434,6 +434,13 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
   buttons), `inverse`/`on-inverse` (image-block menu), `inline-code` (inline `code` text → accent),
   and **`shadow-1`/`shadow-2`** — a black light-shadow is nearly invisible on a dark surface, so the
   borderless floating menus lost their elevation in dark mode until mapped to `--nh-shadow-md/lg`.
+  One token can't be remapped wholesale: Crepe colors many chrome **foreground glyphs** (selection
+  toolbar items, link-tooltip buttons, block drag handle, slash-menu icons, table controls,
+  code-block chevron, image-block icons) with `--crepe-color-outline` — the hairline-border token
+  (`--nh-border`), illegible as a glyph color in both themes but correct for the dividers that share
+  it. `globals.css` therefore re-colors just those glyph selectors to `--nh-text-secondary` (toolbar
+  hover → `--nh-text`), using `:not(.active)`/an extra scoping class so Crepe's `.toolbar-item.active`
+  accent rule still wins and the override beats Crepe's rules regardless of CSS import order.
 - **Status bar**: Zed-style thin bottom bar with the window's layout toggles (sidebar/terminal) +
   theme cycle. See `src/components/CLAUDE.md`.
 - **Doc stats in the status bar** (`src/lib/doc-stats.ts`): live Typora-style **words / chars /

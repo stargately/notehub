@@ -558,6 +558,75 @@ button, a, input, select, textarea {
   color: var(--nh-accent);
 }
 
+/* The bullet glyph is an <svg><circle> painted by `fill` (Crepe sets it to the outline token),
+   so the accent `color` above never reached it — follow the label's accent color. */
+.nh-qa-doc .milkdown .milkdown-list-item-block li .label-wrapper .label.bullet svg {
+  fill: currentColor;
+}
+
+/* Foreground glyphs in Crepe's floating chrome: Crepe colors these with the outline/border
+   token (--crepe-color-outline = --nh-border), a hairline color with almost no contrast
+   against the chrome surface — washed out in BOTH themes. Recolor just the glyphs with a
+   real foreground token; --crepe-color-outline itself stays mapped to --nh-border so
+   dividers and borders remain subtle. Selectors carry one extra class (or :not(.active))
+   so they beat Crepe's rules on specificity regardless of CSS import order — and so the
+   toolbar's `.toolbar-item.active svg` accent rule still wins for toggled-on buttons. */
+
+/* Selection toolbar (bold/italic/link…); hover goes full-strength */
+.nh-qa-doc .milkdown .milkdown-toolbar .toolbar-item:not(.active) svg {
+  color: var(--nh-text-secondary);
+  fill: var(--nh-text-secondary);
+}
+
+.nh-qa-doc .milkdown .milkdown-toolbar .toolbar-item:not(.active):hover svg {
+  color: var(--nh-text);
+  fill: var(--nh-text);
+}
+
+/* Link tooltip: preview icon + copy/edit/remove buttons */
+.nh-qa-doc .milkdown .milkdown-link-preview .link-preview .link-icon svg,
+.nh-qa-doc .milkdown .milkdown-link-preview .link-preview .button svg,
+.nh-qa-doc .milkdown .milkdown-link-edit .link-edit .button svg {
+  color: var(--nh-text-secondary);
+  fill: var(--nh-text-secondary);
+}
+
+/* Block drag handle: the gutter ⠿/+ buttons */
+.nh-qa-doc .milkdown .milkdown-block-handle .operation-item svg {
+  fill: var(--nh-text-secondary);
+}
+
+/* Slash-menu item icons */
+.nh-qa-doc .milkdown .milkdown-slash-menu .menu-groups .menu-group li svg {
+  color: var(--nh-text-secondary);
+  fill: var(--nh-text-secondary);
+}
+
+/* Table controls: drag handles + add-row/col buttons */
+.nh-qa-doc .milkdown .milkdown-table-block svg {
+  fill: var(--nh-text-secondary);
+}
+
+.nh-qa-doc .milkdown .milkdown-table-block .cell-handle,
+.nh-qa-doc .milkdown .milkdown-table-block .line-handle .add-button {
+  color: var(--nh-text-secondary);
+}
+
+/* Code-block language-picker chevron */
+.nh-qa-doc .milkdown .milkdown-code-block .tools .language-button .expand-icon svg {
+  color: var(--nh-text-secondary);
+}
+
+/* Image block: empty-state placeholder icon + edit-bar icon */
+.nh-qa-doc .milkdown .milkdown-image-inline .empty-image-inline .image-icon svg,
+.nh-qa-doc .milkdown .milkdown-image-block .image-edit .image-icon svg {
+  fill: var(--nh-text-secondary);
+}
+
+.nh-qa-doc .milkdown .milkdown-image-block .image-edit .image-icon {
+  color: var(--nh-text-secondary);
+}
+
 /* Mermaid diagrams */
 .nh-qa-doc .milkdown .milkdown-mermaid {
   margin: 12px 0;
