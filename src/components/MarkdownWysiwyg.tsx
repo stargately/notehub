@@ -5,6 +5,7 @@ import { diagram } from "@milkdown/plugin-diagram";
 import { mermaidNodeView } from "../lib/milkdown-mermaid";
 import { registerPmView, type PmInsertView } from "../lib/pm-plain-paste";
 import { imagePastePlugin, proxyImageUrl, uploadImage } from "../lib/milkdown-image-paste";
+import { codeBlockLanguages, codeLanguageFreeTextPlugin } from "../lib/milkdown-code-language";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/classic.css";
 
@@ -63,6 +64,14 @@ function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode
           proxyDomURL: (url: string) => proxyImageUrl(url, filePathRef.current),
           onUpload: (file: File) => uploadImage(file, filePathRef.current),
         },
+        // Populate the code-block language picker with the full known-language catalogue (lazily
+        // loaded for highlighting) + diagram suffixes like `mermaid`. The picker still only lets you
+        // pick from this list; codeLanguageFreeTextPlugin (below) adds Enter-to-use-a-custom-suffix.
+        [Crepe.Feature.CodeMirror]: {
+          languages: codeBlockLanguages,
+          searchPlaceholder: "Search or type a language",
+          noResultText: "Press Enter to use this name",
+        },
       },
     });
 
@@ -72,7 +81,8 @@ function MarkdownWysiwygImpl({ value, onChange, placeholder, className, darkMode
     crepe.editor
       .use(diagram)
       .use(mermaidNodeView(!!darkMode))
-      .use(imagePastePlugin(() => filePathRef.current));
+      .use(imagePastePlugin(() => filePathRef.current))
+      .use(codeLanguageFreeTextPlugin());
 
     crepe.on((listener) => {
       listener.markdownUpdated((_ctx, markdown) => {

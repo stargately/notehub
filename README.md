@@ -157,7 +157,9 @@ plain markdown on save:
 - **Math (KaTeX)** — inline `$x^2$` and block `$$…$$` render as typeset math.
 - **Task lists** — `- [ ]` / `- [x]` become clickable checkboxes.
 - **Tables** — full editing with row/column add-remove and per-column alignment.
-- **Code blocks** — fenced code with syntax highlighting and a language picker.
+- **Code blocks** — fenced code with syntax highlighting and a language picker. The picker lists
+  the full known-language catalogue (plus `mermaid`), and you can **type any custom suffix** and
+  press `Enter` to use it — so the language isn't limited to the dropdown's choices.
 - **Links** — a tooltip to open, edit, copy, or remove a link.
 - **Mermaid diagrams** — ` ```mermaid ` fences render live (click to edit the source inline).
 - **Images** — paste an image from the clipboard (`Cmd+V`) or drag-drop an image file into the

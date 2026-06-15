@@ -82,7 +82,7 @@ notehub/
 | Frontend | React 18, TypeScript 5.6, Vite 6 |
 | Data Grid | AG Grid Community 33 |
 | Rich Text | Tiptap 2.11 (StarterKit + Placeholder + TaskList/TaskItem) — task-drawer description editor |
-| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa` and plain markdown files). Crepe's default features are all on: slash menu + block drag handle (`BlockEdit`), selection toolbar (`Toolbar`), inline/block KaTeX math (`Latex`), task-list checkboxes (`ListItem`), full table editing (`Table`), syntax-highlighted code blocks (`CodeMirror`), link tooltip (`LinkTooltip`). NoteHub overrides `Cursor` (`virtual: false`) + `Placeholder`, and configures `ImageBlock` (`proxyDomURL`/`onUpload`) for local images — see *Image paste / drag-drop to disk*. |
+| WYSIWYG Markdown | Milkdown Crepe 7 (Typora-style editor for `layout: qa` and plain markdown files). Crepe's default features are all on: slash menu + block drag handle (`BlockEdit`), selection toolbar (`Toolbar`), inline/block KaTeX math (`Latex`), task-list checkboxes (`ListItem`), full table editing (`Table`), syntax-highlighted code blocks (`CodeMirror`), link tooltip (`LinkTooltip`). NoteHub overrides `Cursor` (`virtual: false`) + `Placeholder`, configures `ImageBlock` (`proxyDomURL`/`onUpload`) for local images — see *Image paste / drag-drop to disk* — and configures `CodeMirror` with a real `languages` list + a free-text language picker — see *Code-block language picker*. |
 | Diagrams | Mermaid 10 via `@milkdown/plugin-diagram` (custom node view) |
 | Code Editor | Monaco (`@monaco-editor/react`) for raw markdown |
 | Styling | Tailwind CSS 3.4, `@tailwindcss/typography` |
@@ -119,7 +119,7 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — tests live in adjacent `__tests__/` dirs. Coverage spans pure
   `src/lib/` modules (`markdown-parser`, `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`,
-  `tree-refresh`, `fuzzy`, `outline`, `doc-stats`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste` + the keymap engine `keymap/__tests__/`:
+  `tree-refresh`, `fuzzy`, `outline`, `doc-stats`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste`, `milkdown-code-language` + the keymap engine `keymap/__tests__/`:
   `keystroke`/`context`/`keymap`/`user-keymap`/`default-keymap`/`provider`/`commands`), the buffer/sync hooks (`useFileSync`,
   `useProjectFile`, `useViewMode`, `useRawFile`, `useTabManagement`, `useUndoHistory`, `useNativeMenu`),
   and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`, `Sidebar`,
@@ -395,6 +395,33 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
     node lands with the relative `src`, in order, position-clamped); Rust
     `unique_asset_name`/`sanitize_asset_name`/`save_asset` round-trip + de-dup. Only the actual
     WKWebView clipboard/drag *event delivery* is left to manual verification.
+- **Code-block language picker** (`src/lib/milkdown-code-language.ts`, `MarkdownWysiwyg`): Crepe's
+  `CodeMirror` feature ships an **empty** `languages` list, so a code block's language dropdown was a
+  dead "No result" picker with no way to set a custom suffix (the user couldn't even pick `mermaid`).
+  Two cooperating pieces fix it:
+  1. **A real `languages` list** (`codeBlockLanguages`) fed to `featureConfigs[CodeMirror].languages`:
+     the full `@codemirror/language-data` catalogue (≈150 languages, each lazily code-split for
+     highlighting) **front-loaded with diagram pseudo-languages** (`mermaid`/`mmd`). Mermaid has no
+     CodeMirror grammar, so its `LanguageDescription.load` resolves a **no-op `StreamLanguage`** (one
+     unstyled token per line) — listed for discoverability and loader-safe (no throw); the source
+     shows as plain text until a ` ```mermaid ` fence round-trips to a rendered diagram on reload (the
+     `@milkdown/plugin-diagram` remark parser converts it on load — live-typing ` ```mermaid ` still
+     goes straight to a diagram via the plugin's input rule, unchanged).
+  2. **Free-text commit** (`codeLanguageFreeTextPlugin`, a `$prose` plugin like `imagePastePlugin`):
+     the Vue picker only lets you *pick* from the list, so this lets the user **type any suffix** into
+     the picker's search box and commit it with `Enter`. The handler is a **capture-phase** `keydown`
+     listener on the editor DOM (`installPickerKeydown`) — the code-block node view's `stopEvent`
+     keeps events that originate inside it out of ProseMirror's own keydown handling, so a
+     `handleDOMEvents`/bubble hook would never see the search input's Enter. `pickerCommit` (pure,
+     jsdom-testable) recognizes the gesture (Enter in `.language-picker .search-input`, non-composing,
+     non-empty) and returns the enclosing `.milkdown-code-block`; `findCodeBlockPos` maps that element
+     back to its node position by comparing `view.nodeDOM(pos)`, and `commitCodeLanguage` dispatches
+     `setNodeAttribute(pos, 'language', value)`. The picker then closes via its own toggle button. The
+     `searchPlaceholder`/`noResultText` are reworded ("Search or type a language" / "Press Enter to
+     use this name") to surface the free-text path. Tests: `milkdown-code-language.test.ts` (the
+     `codeBlockLanguages` catalogue + mermaid load, `pickerCommit` gesture cases, and an integration
+     suite running `findCodeBlockPos`/`commitCodeLanguage`/`installPickerKeydown` against a real
+     ProseMirror view with a Crepe-shaped `code_block` node view).
 - **Document outline + go-to-heading** (`src/lib/outline.ts`, `OutlinePanel.tsx`, `GoToHeading.tsx`):
   a heading navigator for every markdown view — Typora's outline panel + Zed's Go to Symbol
   (`Cmd+Shift+O`). The pure parser `parseOutline(source)` runs over the doc's **raw markdown string**

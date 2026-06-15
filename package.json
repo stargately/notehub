@@ -22,6 +22,8 @@
     "generate-signer-keys/": "npx tauri signer generate -w ~/.tauri/notehub.key --ci"
   },
   "dependencies": {
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/language-data": "^6.5.2",
     "@milkdown/crepe": "^7.21.1",
     "@milkdown/kit": "^7.21.1",
     "@milkdown/plugin-diagram": "^7.7.0",
