@@ -422,6 +422,22 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
      `codeBlockLanguages` catalogue + mermaid load, `pickerCommit` gesture cases, and an integration
      suite running `findCodeBlockPos`/`commitCodeLanguage`/`installPickerKeydown` against a real
      ProseMirror view with a Crepe-shaped `code_block` node view).
+- **Code-block text selection** (`globals.css`): selecting a range inside a WYSIWYG code block was
+  broken in the desktop app. Two compounding causes, both fixed in CSS scoped to
+  `.nh-qa-doc .milkdown .cm-editor`:
+  1. **Selection blocked in WKWebView.** CodeMirror lives inside a ProseMirror **leaf node view**
+     (the `code_block` view has no `contentDOM`), and WebKit propagates `-webkit-user-select: none`
+     from that non-editable wrapper into the nested `.cm-content` — so drag/shift-select silently did
+     nothing even though the content is `contenteditable`. Forcing `-webkit-user-select: text` /
+     `user-select: text` back onto `.cm-editor`/`.cm-scroller`/`.cm-content`/`.cm-line` re-enables it.
+     (Chromium/browser mode doesn't exhibit this, which is why it only bit the packaged app.)
+  2. **Selection invisible.** CodeMirror's `drawSelection` paints its own `.cm-selectionBackground`
+     layer, defaulting to `#d7d4f0`/`#d9d9d9` — nearly invisible on NoteHub's surfaces (especially
+     light mode). It's re-themed to the new `--nh-code-selection` token (accent tint, per-theme via
+     `.dark`) with `!important` to beat CodeMirror's higher-specificity base-theme rules, un-scoped so
+     focused **and** unfocused selections stay visible. The real DOM selection is untouched, so
+     `Cmd+C` copies the selected range (and the block's Copy button still copies the whole block).
+     Verified manually (WKWebView-specific + pure CSS, like the other visual fixes here).
 - **Document outline + go-to-heading** (`src/lib/outline.ts`, `OutlinePanel.tsx`, `GoToHeading.tsx`):
   a heading navigator for every markdown view — Typora's outline panel + Zed's Go to Symbol
   (`Cmd+Shift+O`). The pure parser `parseOutline(source)` runs over the doc's **raw markdown string**

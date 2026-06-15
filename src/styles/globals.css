@@ -15,6 +15,7 @@
   --nh-accent: #de4c4f;
   --nh-accent-hover: #cc3538;
   --nh-accent-subtle: #fef2f2;
+  --nh-code-selection: rgba(222, 76, 79, 0.20);
   --nh-radius: 6px;
   --nh-radius-lg: 10px;
   --nh-shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
@@ -47,6 +48,7 @@
   --nh-text-secondary: #8b8fa3;
   --nh-text-tertiary: #5c6072;
   --nh-accent-subtle: rgba(222, 76, 79, 0.1);
+  --nh-code-selection: rgba(222, 76, 79, 0.32);
   --nh-shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
   --nh-shadow-md: 0 2px 8px rgba(0,0,0,0.3);
   --nh-shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
@@ -548,6 +550,27 @@ button, a, input, select, textarea {
 
 .nh-qa-doc .milkdown .cm-editor .cm-content {
   caret-color: var(--nh-accent);
+}
+
+/* Code-block text selection. The CodeMirror editor lives inside a ProseMirror leaf node view
+   (no contentDOM), and WebKit/WKWebView propagates `-webkit-user-select: none` from that
+   non-editable wrapper into the nested editable — silently blocking range selection in the
+   desktop app even though `.cm-content` is contenteditable. Force selection back on. */
+.nh-qa-doc .milkdown .cm-editor,
+.nh-qa-doc .milkdown .cm-editor .cm-scroller,
+.nh-qa-doc .milkdown .cm-editor .cm-content,
+.nh-qa-doc .milkdown .cm-editor .cm-line {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Theme the drawn selection layer — CodeMirror's default (#d7d4f0 / #d9d9d9) is nearly invisible
+   on NoteHub's surfaces. `!important` beats CodeMirror's higher-specificity base-theme rules; the
+   un-scoped (focused + unfocused) match keeps the highlight visible whether or not the block has
+   focus. The real DOM selection is unaffected, so Cmd+C copies the selected range as expected. */
+.nh-qa-doc .milkdown .cm-editor .cm-selectionLayer .cm-selectionBackground,
+.nh-qa-doc .milkdown .cm-editor .cm-selectionBackground {
+  background: var(--nh-code-selection) !important;
 }
 
 /* Bear-style list markers: tint ordered-list numbers and bullets with the red accent.
