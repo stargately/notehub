@@ -6,6 +6,50 @@ import mermaid from "mermaid";
 let idCounter = 0;
 
 /**
+ * Remove the temporary DOM nodes `mermaid.render` appends to `document.body` for a given render id:
+ * the svg (`#id`), its wrapper div (`#d{id}`), and the sandbox iframe (`#i{id}`). On success mermaid
+ * removes these itself, but on a draw error it re-throws *before* the cleanup, leaving them behind —
+ * which is how a bad diagram leaks its "Syntax error in text" graphic to the bottom of the page.
+ */
+export function removeMermaidArtifacts(renderId: string): void {
+  for (const id of [renderId, `d${renderId}`, `i${renderId}`]) {
+    document.getElementById(id)?.remove();
+  }
+}
+
+/** The mermaid surface this module needs — narrowed so tests can inject a stub. */
+type MermaidLike = Pick<typeof mermaid, "parse" | "render">;
+
+/**
+ * Render a mermaid diagram to an SVG string, or report failure — **without ever leaking mermaid's
+ * error graphic into the document**. `mermaid.render()` draws a "Syntax error in text" bomb into a
+ * `document.body` node and re-throws without cleaning it up, so calling it on an invalid diagram
+ * (e.g. every keystroke while editing) piles those nodes at the bottom of the page. So we validate
+ * with `mermaid.parse()` first — it only parses (touches no DOM) and returns `false` on bad syntax —
+ * and only `render()` when valid. The rare "parses but draw throws" case is swept up by id.
+ */
+export async function renderMermaid(
+  m: MermaidLike,
+  renderId: string,
+  src: string,
+): Promise<{ ok: true; svg: string } | { ok: false }> {
+  let valid = false;
+  try {
+    valid = (await m.parse(src, { suppressErrors: true })) === true;
+  } catch {
+    valid = false;
+  }
+  if (!valid) return { ok: false };
+  try {
+    const { svg } = await m.render(renderId, src);
+    return { ok: true, svg };
+  } catch {
+    removeMermaidArtifacts(renderId);
+    return { ok: false };
+  }
+}
+
+/**
  * A ProseMirror node view for the `diagram` node added by @milkdown/plugin-diagram.
  * The plugin parses ```mermaid fences into a `diagram` node (and serializes them back),
  * but ships no renderer — this view draws the mermaid SVG.
@@ -49,10 +93,13 @@ export function mermaidNodeView(darkMode: boolean) {
         theme: darkMode ? "dark" : "default",
         securityLevel: "loose",
       });
-      try {
-        const { svg } = await mermaid.render(`milkdown-mermaid-${idCounter++}`, trimmed);
-        preview.innerHTML = svg;
-      } catch {
+      // A fresh id per render keeps concurrent renders (fast typing) from clobbering each other's
+      // temp nodes. renderMermaid validates before rendering, so an invalid diagram never injects
+      // mermaid's error graphic into the page.
+      const result = await renderMermaid(mermaid, `milkdown-mermaid-${idCounter++}`, trimmed);
+      if (result.ok) {
+        preview.innerHTML = result.svg;
+      } else {
         // Invalid mermaid — show the raw source so nothing is lost.
         const pre = document.createElement("pre");
         pre.className = "milkdown-mermaid-error";

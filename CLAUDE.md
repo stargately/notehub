@@ -119,7 +119,7 @@ npm run fmt:rust:check # cargo fmt -- --check
 
 - **Frontend (`vitest`, jsdom)** — tests live in adjacent `__tests__/` dirs. Coverage spans pure
   `src/lib/` modules (`markdown-parser`, `qa-parser`, `print`, `tags`, `types`, `file-kind`, `tree`,
-  `tree-refresh`, `fuzzy`, `outline`, `doc-stats`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste`, `milkdown-code-language` + the keymap engine `keymap/__tests__/`:
+  `tree-refresh`, `fuzzy`, `outline`, `doc-stats`, `tear-off`, `recent-files`, `pm-plain-paste`, `image-assets`, `milkdown-image-paste`, `milkdown-code-language`, `milkdown-mermaid` + the keymap engine `keymap/__tests__/`:
   `keystroke`/`context`/`keymap`/`user-keymap`/`default-keymap`/`provider`/`commands`), the buffer/sync hooks (`useFileSync`,
   `useProjectFile`, `useViewMode`, `useRawFile`, `useTabManagement`, `useUndoHistory`, `useNativeMenu`),
   and components (`DocumentView`, `StatusBar`, `QaLayout`, `Toolbar`, `QaFindBar`, `Sidebar`,
@@ -275,6 +275,17 @@ it ships no renderer, so `src/lib/milkdown-mermaid.ts` adds a ProseMirror node v
 via `mermaid.render`, themed light/dark. Clicking the diagram reveals an inline source editor; edits
 live-preview and commit to the node's `value` on blur via `setNodeMarkup` (Esc cancels,
 Cmd/Ctrl+Enter confirms). The raw fence is also editable via `Cmd+/`.
+
+**No leaked "Syntax error" graphics**: `mermaid.render()` draws its error bomb (`Syntax error in
+text / mermaid version …`) into a `document.body` node and re-throws *before* its own cleanup runs,
+so calling it on an invalid diagram — which the source editor does on **every keystroke** — used to
+pile those error nodes at the bottom of the page. `renderMermaid(m, id, src)` (pure, injectable,
+unit-tested) gates on `mermaid.parse(src, { suppressErrors: true })` first — `parse` only parses
+(touches no DOM) and returns `false` on bad syntax — so `render` is never called on something that
+would error, and the live preview falls back to showing the raw source. The rare "parses but draw
+throws" case is swept up by `removeMermaidArtifacts(id)` (removes mermaid's `#id`/`#d{id}`/`#i{id}`
+temp nodes); each render uses a fresh id so concurrent renders don't clobber each other. Tests:
+`milkdown-mermaid.test.ts`.
 
 Parsing/serialization lives in `src/lib/qa-parser.ts` (`splitFrontmatter`, `parseQaBlocks`,
 `assembleQa`). Frontmatter is preserved **verbatim** — QA files never round-trip through
@@ -437,7 +448,11 @@ in count. Highlighting needs WKWebView/Safari 17.2+; navigation and replace work
      `.dark`) with `!important` to beat CodeMirror's higher-specificity base-theme rules, un-scoped so
      focused **and** unfocused selections stay visible. The real DOM selection is untouched, so
      `Cmd+C` copies the selected range (and the block's Copy button still copies the whole block).
-     Verified manually (WKWebView-specific + pure CSS, like the other visual fixes here).
+     The runtime behavior is WKWebView-specific + pure CSS so it's verified manually, but a
+     source-level regression guard (`src/styles/__tests__/globals-code-selection.test.ts`) asserts the
+     load-bearing rules survive in `globals.css` (the token, the `user-select: text` block reaching
+     `.cm-content`/`.cm-line`, and the `.cm-selectionBackground` override) — jsdom can't exercise the
+     cascade or the WebKit quirk, so the test locks the CSS contract instead.
 - **Document outline + go-to-heading** (`src/lib/outline.ts`, `OutlinePanel.tsx`, `GoToHeading.tsx`):
   a heading navigator for every markdown view — Typora's outline panel + Zed's Go to Symbol
   (`Cmd+Shift+O`). The pure parser `parseOutline(source)` runs over the doc's **raw markdown string**
