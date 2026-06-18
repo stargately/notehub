@@ -6,8 +6,8 @@ src-tauri/target/
 .playwright-mcp/
 .idea
 
-# Lock files
-yarn.lock
+# Lock files — yarn.lock is the committed source of truth (project uses yarn);
+# ignore the others so they can't compete as a second lockfile.
 package-lock.json
 pnpm-lock.yaml
 bun.lockb

@@ -69,5 +69,18 @@
     "typescript": "^5.6.3",
     "vite": "^6.0.5",
     "vitest": "^4.0.18"
+  },
+  "comment:overrides": "Force a single copy of the core ProseMirror packages. Milkdown (@milkdown/kit/prose/*) and Tiptap (@tiptap/pm) both pull prosemirror-view; without these pins a fresh install on a machine with no committed lockfile (yarn.lock/package-lock.json are gitignored) can nest a second prosemirror-view under @milkdown/prose. The two copies have nominally-incompatible EditorView types (private `directPlugins` field), which breaks `tsc` in milkdown-image-paste.ts / milkdown-code-language.ts. `overrides` is honored by npm, `resolutions` by yarn.",
+  "overrides": {
+    "prosemirror-view": "1.41.6",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-model": "1.25.4",
+    "prosemirror-transform": "1.11.0"
+  },
+  "resolutions": {
+    "prosemirror-view": "1.41.6",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-model": "1.25.4",
+    "prosemirror-transform": "1.11.0"
   }
 }
