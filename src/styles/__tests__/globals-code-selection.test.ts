@@ -44,3 +44,36 @@ describe("globals.css — code-block text selection", () => {
     );
   });
 });
+
+describe("globals.css — code-block editor legibility", () => {
+  // These can't be exercised in jsdom either: the WebKit generic-`monospace` shrink is a WKWebView
+  // quirk, and CodeMirror's gutter/active-line rules are injected at runtime by EditorView. So the
+  // test locks the load-bearing declarations in source. See CLAUDE.md "Code-block editor legibility".
+
+  it("pins a named monospace family + explicit size on the code text (dodges the WebKit shrink)", () => {
+    // The fix for the "too small" report: a real family name + explicit font-size on the editable
+    // layers so the generic-`monospace` fixed-width-default-size quirk can't apply.
+    expect(flat).toContain(".milkdown-code-block .cm-content");
+    expect(flat).toContain(".milkdown-code-block .cm-line");
+    expect(flat).toMatch(
+      /\.milkdown-code-block[^{}]*\.cm-line[^{}]*\{[^{}]*font-family: var\(--crepe-font-code\);[^{}]*font-size: 14px;[^{}]*color: var\(--nh-text\);[^{}]*\}/,
+    );
+  });
+
+  it("calms the active line: no gutter box, current line-number promoted to text colour", () => {
+    // Drops CodeMirror's solid #e2f2ff / #222227 active-line-gutter box (the "why is the line number
+    // emphasized" report) and the line tint, marking the active line only via its number's colour.
+    expect(flat).toMatch(
+      /\.milkdown-code-block \.cm-activeLine \{ background: transparent !important; \}/,
+    );
+    expect(flat).toMatch(
+      /\.milkdown-code-block \.cm-activeLineGutter \{ background: transparent !important; color: var\(--nh-text\) !important; \}/,
+    );
+  });
+
+  it("re-themes the line-number gutter with a token instead of the flat grey default", () => {
+    expect(flat).toMatch(
+      /\.milkdown-code-block \.cm-gutters \{ color: var\(--nh-text-tertiary\) !important; border-right: none !important; \}/,
+    );
+  });
+});

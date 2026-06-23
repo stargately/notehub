@@ -573,6 +573,62 @@ button, a, input, select, textarea {
   background: var(--nh-code-selection) !important;
 }
 
+/* Code-block editor legibility. Crepe wires CodeMirror with `basicSetup` and no editor theme, so
+   the snippet editor falls back to CodeMirror's stock defaults, which read poorly here:
+     • `.cm-scroller` sets `font-family: monospace` — the *generic* keyword — which trips WebKit's
+       "render generic monospace at the smaller fixed-width default size" quirk, so code came out
+       noticeably smaller than the surrounding 16px prose (the "font too small" report). Naming a
+       real family + pinning an explicit size sidesteps the quirk.
+     • the line-number gutter is a flat #6c6c6c grey (low contrast on our surface), and the active
+       line's gutter cell gets a solid #e2f2ff (light) / #222227 (dark) box that reads as a stray,
+       unexplained highlight.
+   Re-theme the whole thing to NoteHub tokens so a fenced ``` block is crisp in both modes. */
+
+/* Snippet surface: a subtle card so a code block stands apart from the prose. */
+.nh-qa-doc .milkdown .milkdown-code-block {
+  border: 1px solid var(--nh-border-subtle);
+  border-radius: var(--nh-radius);
+  background: var(--nh-bg-sunken);
+}
+
+/* Let the card surface above show through CodeMirror's own backgrounds (light + dark). */
+.nh-qa-doc .milkdown .milkdown-code-block .cm-editor,
+.nh-qa-doc .milkdown .milkdown-code-block .cm-gutters {
+  background: transparent !important;
+}
+
+/* Code text: a named monospace family (dodges the generic-`monospace` shrink), an explicit
+   comfortable size + line-height, and full-contrast colour so plain (un-tokenised) code is crisp
+   — token spans keep their own syntax colours. */
+.nh-qa-doc .milkdown .milkdown-code-block .cm-content,
+.nh-qa-doc .milkdown .milkdown-code-block .cm-line,
+.nh-qa-doc .milkdown .milkdown-code-block .milkdown-code-block-placeholder {
+  font-family: var(--crepe-font-code);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--nh-text);
+}
+
+/* Line-number gutter: quiet but legible, no divider. `!important` beats CodeMirror's base theme. */
+.nh-qa-doc .milkdown .milkdown-code-block .cm-gutters {
+  color: var(--nh-text-tertiary) !important;
+  border-right: none !important;
+}
+.nh-qa-doc .milkdown .milkdown-code-block .cm-lineNumbers .cm-gutterElement {
+  font-family: var(--crepe-font-code);
+  font-size: 12.5px;
+}
+
+/* Active line: drop CodeMirror's solid gutter box + line tint and mark the current line calmly,
+   by promoting only its number to the full text colour — the convention every code editor uses. */
+.nh-qa-doc .milkdown .milkdown-code-block .cm-activeLine {
+  background: transparent !important;
+}
+.nh-qa-doc .milkdown .milkdown-code-block .cm-activeLineGutter {
+  background: transparent !important;
+  color: var(--nh-text) !important;
+}
+
 /* Bear-style list markers: tint ordered-list numbers and bullets with the red accent.
    Crepe defaults the marker color to --crepe-color-outline (= --nh-border), which reads too dim.
    Set the color directly on the .label text; task checkboxes (.checked/.unchecked) stay neutral. */
