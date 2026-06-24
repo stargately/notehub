@@ -8,6 +8,8 @@
 //     `findDomHeadingIndex` (level + stripped text + occurrence), since the QA layout renders
 //     many independent editors and a source offset doesn't translate to a DOM position.
 
+import { isQaMarkerLine } from "./qa-parser";
+
 export interface OutlineHeading {
   /** Heading depth, 1–6. */
   level: number;
@@ -32,8 +34,6 @@ const SETEXT = /^ {0,3}(=+|-+)[ \t]*$/;
 // Lines that can't be the paragraph text of a setext heading (list items, table rows,
 // indented code) — keeps `- item` + `---` reading as a list + hr, not an h2.
 const NON_PARAGRAPH = /^( {4,}|\t| {0,3}([-*+][ \t]|\d{1,9}[.)][ \t])|\s*\|)/;
-// `layout: qa` structural markers — never heading text.
-const QA_MARKERS = new Set(["**>>>**", "**<<<**", "**===**"]);
 
 /** Strip leading blockquote markers so `> # quoted heading` still outlines (and stays aligned
  *  with the rendered DOM, where it is a real <h1>). */
@@ -107,6 +107,13 @@ export function parseOutline(source: string): OutlineHeading[] {
       continue;
     }
 
+    // `layout: qa` markers (>>> / <<< / ===, plain or bold) are never headings — and this must run
+    // before the setext check so a plain `===` isn't read as a setext underline of the line above.
+    if (isQaMarkerLine(line)) {
+      prevText = null;
+      continue;
+    }
+
     const atx = line.match(ATX);
     if (atx) {
       const raw = (atx[2] ?? "").replace(/[ \t]+#+[ \t]*$/, "").trim();
@@ -125,7 +132,7 @@ export function parseOutline(source: string): OutlineHeading[] {
       continue;
     }
 
-    if (line.trim() === "" || NON_PARAGRAPH.test(line) || QA_MARKERS.has(line.trim())) {
+    if (line.trim() === "" || NON_PARAGRAPH.test(line)) {
       prevText = null;
     } else {
       prevText = line;

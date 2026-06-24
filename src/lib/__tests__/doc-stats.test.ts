@@ -36,6 +36,13 @@ describe("stripToPlainText", () => {
     expect(stripToPlainText(src)).toBe("intro\nQuestion?\nAnswer.\nnote\n");
   });
 
+  it("drops plain and HTML-comment QA markers too", () => {
+    const plain = "intro\n>>>\nQuestion?\n<<<\nAnswer.\n===\nnote";
+    expect(stripToPlainText(plain)).toBe("intro\nQuestion?\nAnswer.\nnote");
+    const comment = "intro\n<!-- Q -->\nQuestion?\n<!-- A -->\nAnswer.\n<!-- E -->\nnote";
+    expect(stripToPlainText(comment)).toBe("intro\nQuestion?\nAnswer.\nnote");
+  });
+
   it("drops table separator rows and pipes but keeps cell text", () => {
     expect(stripToPlainText("| Id | Title |\n| --- | --- |\n| 1 | Fix bug |")).toBe(
       "Id Title\n1 Fix bug",

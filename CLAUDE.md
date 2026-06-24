@@ -258,6 +258,17 @@ A second question…
   `**===**` only terminates inside an answer (like `**<<<**` inside a question); stray ones stay
   literal. A block without it serializes to `{ left, right }` (no round-trip change).
 - A file with no markers renders as one full-width editor.
+- **Three accepted marker forms.** Each marker may be written **plain** (`>>>`/`<<<`/`===`),
+  **bold** (`**>>>**`/`**<<<**`/`**===**`), or as an **HTML comment** (`<!-- Q -->`/`<!-- A -->`/
+  `<!-- E -->`, whitespace- + case-tolerant) — the comment form is invisible when the file is
+  rendered as plain markdown elsewhere. `isMarker` (`qa-parser.ts`) matches all three; the shared
+  `isQaMarkerLine` predicate (used by `doc-stats.ts` + `outline.ts` to strip markers) inherits this.
+  **The authored form is preserved on save**: `parseQaBlocks` records the first marker's form as
+  `QaDocument.markerStyle` (`"plain" | "bold" | "comment"`, default `"bold"` for a marker-less /
+  brand-new doc) and `assembleQa` re-emits that style — so a plain file stays plain, a comment file
+  stays comment, even though `QaLayout` reassembles the whole file via `assembleQa` on every edit.
+  (`outline.ts` checks `isQaMarkerLine` *before* its setext branch so a plain `===` terminator isn't
+  misread as a setext-H1 underline of the line above it.)
 
 ### Plain markdown files (no `layout`)
 

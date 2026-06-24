@@ -1,30 +1,47 @@
 // Parsing helpers for `layout: qa` documents.
 //
-// A QA file is a plain markdown file whose body is split by marker lines:
-//   - everything before the first `**>>>**`  -> full-width header
-//   - text between `**>>>**` and `**<<<**`    -> left column (question)
-//   - text after `**<<<**` (until the next `**>>>**`, `**===**`, or EOF) -> right column (answer)
-//   - text after an optional `**===**` (until the next `**>>>**` or EOF) -> full-width band
+// A QA file is a plain markdown file whose body is split by marker lines. Each of the three markers
+// is accepted in three interchangeable forms — plain (`>>>`), bold-wrapped (`**>>>**`), or an
+// HTML comment (`<!-- Q -->`) — so hand- or Claude-authored files in any style render as a Q&A:
+//   open `>>>` / `**>>>**` / `<!-- Q -->`   close `<<<` / `**<<<**` / `<!-- A -->`
+//   term `===` / `**===**` / `<!-- E -->`
+//   - everything before the first open marker -> full-width header
+//   - text between open and close             -> left column (question)
+//   - text after close (until the next open, term, or EOF) -> right column (answer)
+//   - text after an optional term (until the next open or EOF) -> full-width band
 //     below the row (the block's `after` field) — lets an answer end early so trailing prose
 //     isn't swallowed into the answer column.
+//
+// The authored form is preserved on save: `parseQaBlocks` records the form of the first marker as
+// `markerStyle` and `assembleQa` re-emits that style, so a file stays plain / bold / comment as
+// written (a marker-less / brand-new doc defaults to bold).
 //
 // These functions operate purely on the raw file string. The frontmatter block is
 // preserved verbatim so `layout: qa` is never reformatted or polluted on save.
 
-const OPEN_MARKER = "**>>>**";
-const CLOSE_MARKER = "**<<<**";
-const TERM_MARKER = "**===**";
+// The canonical (plain) marker tokens. `isMarker` also matches each one wrapped in `**…**` or as
+// the HTML comment whose letter is keyed below (open=Q / close=A / term=E).
+const OPEN_MARKER = ">>>";
+const CLOSE_MARKER = "<<<";
+const TERM_MARKER = "===";
+const COMMENT_LETTER: Record<string, string> = { ">>>": "Q", "<<<": "A", "===": "E" };
 
 export interface QaBlock {
   left: string;
   right: string;
-  /** Optional full-width band after the answer, introduced by a `**===**` terminator. */
+  /** Optional full-width band after the answer, introduced by a `===` terminator. */
   after?: string;
 }
 
 export interface QaDocument {
   header: string;
   blocks: QaBlock[];
+  /**
+   * The marker form to serialize with — detected from the first marker on parse, preserved through
+   * edits. Optional so doc literals built as `{ header, blocks }` still serialize (defaulting to
+   * `"bold"`, the historical output).
+   */
+  markerStyle?: "bold" | "plain" | "comment";
 }
 
 /**
@@ -37,8 +54,29 @@ export function splitFrontmatter(raw: string): { frontmatter: string; body: stri
   return { frontmatter: match[1], body: match[2] };
 }
 
+const COMMENT_MARKER = /^<!--\s*([A-Za-z])\s*-->$/;
+
+/** A line that is exactly `marker` — plain, bold-wrapped (`**…**`), or the matching HTML comment
+ *  (`<!-- Q/A/E -->`, whitespace + case tolerant). */
 function isMarker(line: string, marker: string): boolean {
-  return line.trim() === marker;
+  const t = line.trim();
+  if (t === marker || t === `**${marker}**`) return true;
+  const m = t.match(COMMENT_MARKER);
+  return !!m && m[1].toUpperCase() === COMMENT_LETTER[marker];
+}
+
+/** The form a (confirmed) marker line was written in — drives `markerStyle` for serialization. */
+function markerForm(line: string): "comment" | "bold" | "plain" {
+  const t = line.trim();
+  return t.startsWith("<!--") ? "comment" : t.startsWith("**") ? "bold" : "plain";
+}
+
+/** True for any QA structural marker line (`>>>` / `<<<` / `===`), in any form. Shared with the
+ *  doc-stats and outline modules so those strip markers consistently with the parser. */
+export function isQaMarkerLine(line: string): boolean {
+  return (
+    isMarker(line, OPEN_MARKER) || isMarker(line, CLOSE_MARKER) || isMarker(line, TERM_MARKER)
+  );
 }
 
 /** Trim leading/trailing blank lines while preserving interior content. */
@@ -61,6 +99,11 @@ export function parseQaBlocks(body: string): QaDocument {
   let leftLines: string[] = [];
   let rightLines: string[] = [];
   let afterLines: string[] = [];
+  // Form of the first recognized marker — the whole doc serializes in that style.
+  let detectedStyle: "bold" | "plain" | "comment" | null = null;
+  const noteStyle = (line: string) => {
+    if (detectedStyle === null) detectedStyle = markerForm(line);
+  };
 
   const flushBlock = () => {
     const after = trimBlankLines(afterLines.join("\n"));
@@ -78,14 +121,17 @@ export function parseQaBlocks(body: string): QaDocument {
   for (const line of lines) {
     if (isMarker(line, OPEN_MARKER)) {
       if (target !== "header") flushBlock();
+      noteStyle(line);
       target = "left";
       continue;
     }
     if (isMarker(line, CLOSE_MARKER) && target === "left") {
+      noteStyle(line);
       target = "right";
       continue;
     }
     if (isMarker(line, TERM_MARKER) && target === "right") {
+      noteStyle(line);
       target = "after";
       continue;
     }
@@ -101,6 +147,7 @@ export function parseQaBlocks(body: string): QaDocument {
   return {
     header: trimBlankLines(headerLines.join("\n")),
     blocks,
+    markerStyle: detectedStyle ?? "bold",
   };
 }
 
@@ -130,11 +177,19 @@ export function diffChangedFields(oldDoc: QaDocument, newDoc: QaDocument): strin
  * `splitFrontmatter` + `parseQaBlocks` (stable for normalized input).
  */
 export function assembleQa(frontmatter: string, doc: QaDocument): string {
+  // Re-emit the authored marker style; an unset style (doc literals, brand-new docs) stays bold.
+  const style = doc.markerStyle ?? "bold";
+  const tok = (plain: string, letter: string) =>
+    style === "comment" ? `<!-- ${letter} -->` : style === "plain" ? plain : `**${plain}**`;
+  const open = tok(OPEN_MARKER, COMMENT_LETTER[OPEN_MARKER]);
+  const close = tok(CLOSE_MARKER, COMMENT_LETTER[CLOSE_MARKER]);
+  const term = tok(TERM_MARKER, COMMENT_LETTER[TERM_MARKER]);
+
   const parts: string[] = [];
   if (doc.header.trim()) parts.push(doc.header.trim());
   for (const block of doc.blocks) {
-    const lines = [OPEN_MARKER, "", block.left.trim(), "", CLOSE_MARKER, "", block.right.trim()];
-    if (block.after?.trim()) lines.push("", TERM_MARKER, "", block.after.trim());
+    const lines = [open, "", block.left.trim(), "", close, "", block.right.trim()];
+    if (block.after?.trim()) lines.push("", term, "", block.after.trim());
     parts.push(lines.join("\n"));
   }
   const bodyText = parts.join("\n\n");

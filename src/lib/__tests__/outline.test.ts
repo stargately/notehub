@@ -95,6 +95,20 @@ describe("parseOutline", () => {
     expect(parseOutline(src).map((h) => h.text)).toEqual(["Head"]);
   });
 
+  it("ignores plain and HTML-comment QA markers too", () => {
+    const plain = "# Head\n\n>>>\n\nQ?\n\n<<<\n\nA.\n\n===\n";
+    expect(parseOutline(plain).map((h) => h.text)).toEqual(["Head"]);
+    const comment = "# Head\n\n<!-- Q -->\n\nQ?\n\n<!-- A -->\n\nA.\n\n<!-- E -->\n";
+    expect(parseOutline(comment).map((h) => h.text)).toEqual(["Head"]);
+  });
+
+  it("a plain `===` terminator right under the answer is not promoted to a setext h1", () => {
+    // Without the early QA-marker check (before the setext branch), `Answer.` + `===` would
+    // wrongly outline as an h1 — the collision plain markers introduce.
+    const src = ">>>\nQ?\n<<<\nAnswer.\n===\nnote";
+    expect(parseOutline(src)).toEqual([]);
+  });
+
   it("strips inline markdown from the display text but keeps it in raw", () => {
     const src = "## **Bold** and `code` and [link](http://x)";
     expect(parseOutline(src)).toEqual([

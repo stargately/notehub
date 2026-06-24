@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { splitFrontmatter, parseQaBlocks, assembleQa, diffChangedFields } from "../qa-parser";
+import {
+  splitFrontmatter,
+  parseQaBlocks,
+  assembleQa,
+  diffChangedFields,
+  isQaMarkerLine,
+} from "../qa-parser";
 
 describe("splitFrontmatter", () => {
   it("splits a leading frontmatter block from the body verbatim", () => {
@@ -79,6 +85,71 @@ describe("parseQaBlocks", () => {
 
     const left = parseQaBlocks(["**>>>**", "q", "**===**", "still q"].join("\n"));
     expect(left.blocks).toEqual([{ left: "q\n**===**\nstill q", right: "" }]);
+  });
+});
+
+describe("marker forms — plain / bold / HTML-comment", () => {
+  // Each marker has three interchangeable spellings; a doc in any of them parses identically.
+  const forms = {
+    plain: { open: ">>>", close: "<<<", term: "===" },
+    bold: { open: "**>>>**", close: "**<<<**", term: "**===**" },
+    comment: { open: "<!-- Q -->", close: "<!-- A -->", term: "<!-- E -->" },
+  } as const;
+
+  for (const [style, m] of Object.entries(forms)) {
+    it(`parses ${style} markers into the same blocks`, () => {
+      const body = ["intro", "", m.open, "q", m.close, "a", m.term, "note"].join("\n");
+      const doc = parseQaBlocks(body);
+      expect(doc.header).toBe("intro");
+      expect(doc.blocks).toEqual([{ left: "q", right: "a", after: "note" }]);
+    });
+
+    it(`detects markerStyle="${style}" from the first marker`, () => {
+      const body = [m.open, "q", m.close, "a"].join("\n");
+      expect(parseQaBlocks(body).markerStyle).toBe(style);
+    });
+
+    it(`assembleQa re-emits ${style} markers and round-trips stably`, () => {
+      const body = [m.open, "q", m.close, "a", m.term, "note"].join("\n");
+      const doc = parseQaBlocks(body);
+      const out = assembleQa("", doc);
+      expect(out).toContain(m.open);
+      expect(out).toContain(m.close);
+      expect(out).toContain(m.term);
+      const reparsed = parseQaBlocks(splitFrontmatter(out).body);
+      expect(reparsed).toEqual(doc); // blocks + markerStyle preserved
+    });
+  }
+
+  it("defaults markerStyle to 'bold' for a marker-less doc", () => {
+    expect(parseQaBlocks("# just a header").markerStyle).toBe("bold");
+  });
+
+  it("the first marker's form wins for a mixed-form doc", () => {
+    const body = [">>>", "q", "**<<<**", "a"].join("\n");
+    const doc = parseQaBlocks(body);
+    expect(doc.blocks).toEqual([{ left: "q", right: "a" }]);
+    expect(doc.markerStyle).toBe("plain");
+  });
+
+  it("comment markers are whitespace- and case-tolerant", () => {
+    const body = ["<!--Q-->", "q", "<!--  a  -->", "a"].join("\n");
+    expect(parseQaBlocks(body).blocks).toEqual([{ left: "q", right: "a" }]);
+  });
+
+  it("a non-Q/A/E HTML comment is not a marker (stays literal content)", () => {
+    const body = [">>>", "q", "<<<", "a\n<!-- TODO: revisit -->"].join("\n");
+    const doc = parseQaBlocks(body);
+    expect(doc.blocks).toEqual([{ left: "q", right: "a\n<!-- TODO: revisit -->" }]);
+  });
+
+  it("isQaMarkerLine recognizes every form and rejects non-markers", () => {
+    for (const line of [">>>", "<<<", "===", "**>>>**", "<!-- Q -->", "<!--e-->", "  <<<  "]) {
+      expect(isQaMarkerLine(line)).toBe(true);
+    }
+    for (const line of ["hello", "<!-- X -->", ">> >", "= = ="]) {
+      expect(isQaMarkerLine(line)).toBe(false);
+    }
   });
 });
 

@@ -123,6 +123,10 @@ edit the raw fence via the raw editor. Tables render inline too.
   of file) becomes a full-width band below the row — handy for a note or divider between topics.
 - Stack multiple `**>>>**`/`**<<<**` blocks for multiple Q&A rows.
 - A file with no markers is just one full-width editor.
+- **Each marker can be written three ways** — bold (`**>>>**`), plain (`>>>`), or as an HTML
+  comment (`<!-- Q -->` = question, `<!-- A -->` = answer, `<!-- E -->` = end-of-answer note). The
+  comment form stays invisible if the file is viewed as plain markdown elsewhere. NoteHub
+  **keeps whichever form you used** when it saves the file.
 
 Press `Cmd+/` to switch between the formatted editor and the raw markdown code editor.
 Press `Cmd+Shift+V` to **paste as plain text** — the clipboard is inserted as literal,

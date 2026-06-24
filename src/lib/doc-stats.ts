@@ -11,6 +11,8 @@
 //     subscribes via `useSyncExternalStore`. Keeping this out of App state means a stats tick
 //     while typing re-renders only the status bar — not the Sidebar/TabBar/document tree.
 
+import { isQaMarkerLine } from "./qa-parser";
+
 export interface DocStats {
   /** Word count: whitespace-separated tokens, plus each CJK character counted as one word. */
   words: number;
@@ -26,7 +28,6 @@ const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 // Pure-decoration lines: setext underlines, thematic breaks, table separator rows.
 const DECORATION_LINE = /^\s*(={3,}|-{3,}|_{3,}|\*{3,}|\|?[\s:|-]*-[\s:|-]*\|?)\s*$/;
-const QA_MARKERS = new Set(["**>>>**", "**<<<**", "**===**"]);
 
 // CJK ranges counted per-character (a whitespace-token count would lump a whole sentence into one
 // "word"): Hiragana/Katakana, CJK Unified (+ext A, compat), Hangul syllables.
@@ -78,7 +79,7 @@ export function stripToPlainText(source: string): string {
       fence = { char: fenceMatch![1][0], len: fenceMatch![1].length };
       continue;
     }
-    if (QA_MARKERS.has(line.trim()) || DECORATION_LINE.test(line)) continue;
+    if (isQaMarkerLine(line) || DECORATION_LINE.test(line)) continue;
     out.push(stripLine(line));
   }
 
